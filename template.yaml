@@ -1,0 +1,289 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: TaskWeave Content Orchestrator (No WAF, Clean Deploy)
+
+Parameters:
+  GeminiApiKeySecretName:
+    Type: String
+    Default: gemini/api_key
+  GeminiModel:
+    Type: String
+    Default: gemini-3-flash-preview
+  SesFromEmail:
+    Type: String
+    Default: "rajatarun12@gmail.com"
+
+Globals:
+  Function:
+    Runtime: python3.9
+    Timeout: 60
+    MemorySize: 512
+    Environment:
+      Variables:
+        LOG_LEVEL: INFO
+
+Resources:
+  AppointmentApiFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: appointment_api.lambda_handler
+      Environment:
+        Variables:
+          SES_FROM_EMAIL: rajatarun12@gmail.com
+      Policies:
+        - AWSLambdaBasicExecutionRole
+        - Statement:
+            Effect: Allow
+            Action:
+              - ses:SendEmail
+              - ses:SendRawEmail
+            Resource: "*"
+      Events:
+        AppointmentPost:
+          Type: Api
+          Properties:
+            RestApiId: !Ref RestApi
+            Path: /public/appointment
+            Method: POST
+        AppointmentOptions:
+          Type: Api
+          Properties:
+            RestApiId: !Ref RestApi
+            Path: /public/appointment
+            Method: OPTIONS
+  PublicApiFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: public_api.lambda_handler
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref ContentTable
+          ALLOWED_ORIGIN: "*"
+          SES_CONTACT_LIST: TarunNewsletter
+      Policies:
+        - AWSLambdaBasicExecutionRole
+        - DynamoDBCrudPolicy:
+            TableName: !Ref ContentTable
+        - Statement:
+            Effect: Allow
+            Action:
+              - ses:CreateContact
+              - ses:UpdateContact
+              - ses:GetContact
+            Resource: "*"
+      Events:
+        PublicSubscribe:
+          Type: Api
+          Properties:
+            RestApiId: !Ref RestApi
+            Path: /public/subscribe
+            Method: POST
+        PublicSubscribeOptions:
+          Type: Api
+          Properties:
+            RestApiId: !Ref RestApi
+            Path: /public/subscribe
+            Method: OPTIONS
+  SiteDataFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: site_data.lambda_handler
+      Environment:
+        Variables:
+          ALLOWED_ORIGIN: "*"
+          ARTICLES_BUCKET: tarun-rag-docs-239571291755-us-east-1
+          ARTICLES_PREFIX: docs/articles
+      Policies:
+        - AWSLambdaBasicExecutionRole
+        - Statement:
+            Effect: Allow
+            Action:
+              - s3:ListBucket
+            Resource:
+              - arn:aws:s3:::tarun-rag-docs-239571291755-us-east-1
+            Condition:
+              StringLike:
+                s3:prefix:
+                  - "docs/articles/*"
+        - Statement:
+            Effect: Allow
+            Action:
+              - s3:GetObject
+            Resource:
+              - arn:aws:s3:::tarun-rag-docs-239571291755-us-east-1/docs/articles/*
+
+      Events:
+        SitePosts:
+          Type: Api
+          Properties:
+            RestApiId: !Ref RestApi
+            Path: /site/posts
+            Method: GET
+        SitePostById:
+          Type: Api
+          Properties:
+            RestApiId: !Ref RestApi
+            Path: /site/posts/{id}
+            Method: GET
+  ContentTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: pk
+          AttributeType: S
+        - AttributeName: sk
+          AttributeType: S
+        - AttributeName: status
+          AttributeType: S
+        - AttributeName: updatedAt
+          AttributeType: S
+        - AttributeName: publishedAt
+          AttributeType: S
+      KeySchema:
+        - AttributeName: pk
+          KeyType: HASH
+        - AttributeName: sk
+          KeyType: RANGE
+      GlobalSecondaryIndexes:
+        - IndexName: StatusUpdatedIndex
+          KeySchema:
+            - AttributeName: status
+              KeyType: HASH
+            - AttributeName: updatedAt
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+        - IndexName: StatusPublishedIndex
+          KeySchema:
+            - AttributeName: status
+              KeyType: HASH
+            - AttributeName: publishedAt
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+
+  RestApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: prod
+      EndpointConfiguration: REGIONAL
+      Cors:
+        AllowOrigin: "'*'"
+        AllowMethods: "'GET,POST,PATCH,DELETE,OPTIONS'"
+        AllowHeaders: "'content-type'"
+
+  AdminApiFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: admin_api.lambda_handler
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref ContentTable
+          ALLOWED_ORIGIN: "*"
+          GENERATE_FN_NAME: !Ref GenerateDraftsFunction
+          NEWSLETTER_FN_NAME: !Ref NewsletterFunction
+          ARTICLES_BUCKET: tarun-rag-docs-239571291755-us-east-1
+          ARTICLES_PREFIX: docs/articles
+      Policies:
+        - AWSLambdaBasicExecutionRole
+        - DynamoDBCrudPolicy:
+            TableName: !Ref ContentTable
+        - Statement:
+            Effect: Allow
+            Action: lambda:InvokeFunction
+            Resource:
+              - !GetAtt GenerateDraftsFunction.Arn
+              - !GetAtt NewsletterFunction.Arn
+        - Statement:
+            Effect: Allow
+            Action:
+              - s3:PutObject
+            Resource:
+              - arn:aws:s3:::tarun-rag-docs-239571291755-us-east-1/docs/articles/*
+      Events:
+        AdminRoot:
+          Type: Api
+          Properties:
+            RestApiId: !Ref RestApi
+            Path: /admin
+            Method: ANY
+        AdminProxy:
+          Type: Api
+          Properties:
+            RestApiId: !Ref RestApi
+            Path: /admin/{proxy+}
+            Method: ANY
+
+  GenerateDraftsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: automation.generate_drafts_handler
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref ContentTable
+          GEMINI_API_KEY_SECRET_NAME: !Ref GeminiApiKeySecretName
+          GEMINI_MODEL: !Ref GeminiModel
+      Policies:
+        - AWSLambdaBasicExecutionRole
+        - DynamoDBCrudPolicy:
+            TableName: !Ref ContentTable
+        - Statement:
+            Effect: Allow
+            Action: secretsmanager:GetSecretValue
+            Resource: "*"
+      Events:
+        WeeklyGenerateDrafts:
+          Type: Schedule
+          Properties:
+            Schedule: cron(0 15 ? * MON *)
+            Enabled: true
+
+  NewsletterFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: newsletter.newsletter_handler
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref ContentTable
+          GEMINI_API_KEY_SECRET_NAME: !Ref GeminiApiKeySecretName
+          GEMINI_MODEL: !Ref GeminiModel
+          SES_FROM_EMAIL: !Ref SesFromEmail
+      Policies:
+        - AWSLambdaBasicExecutionRole
+        - DynamoDBReadPolicy:
+            TableName: !Ref ContentTable
+        - Statement:
+            Effect: Allow
+            Action: secretsmanager:GetSecretValue
+            Resource: "*"
+        - Statement:
+            Effect: Allow
+            Action:
+              - ses:SendEmail
+              - ses:SendRawEmail
+            Resource: "*"
+      Events:
+        WeeklyNewsletter:
+          Type: Schedule
+          Properties:
+            Schedule: cron(0 0 ? * MON *)
+            Enabled: true
+
+Outputs:
+  ApiBaseUrl:
+    Value: !Sub "https://${RestApi}.execute-api.${AWS::Region}.amazonaws.com/prod"
+  RestApiId:
+    Value: !Ref RestApi
+  ContentTableName:
+    Value: !Ref ContentTable
+  GenerateDraftsFunctionName:
+    Value: !Ref GenerateDraftsFunction
+  NewsletterFunctionName:
+    Value: !Ref NewsletterFunction
