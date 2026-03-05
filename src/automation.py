@@ -109,9 +109,23 @@ def createTeamTask(topic, objective):
     except Exception as e:
         raise RuntimeError("team_task_failed") from e
 
-    run_id = body.get("run_id")
-    execution_arn = body.get("execution_arn")
+    run_id = body.get("run_id") if isinstance(body, dict) else None
+    execution_arn = body.get("execution_arn") if isinstance(body, dict) else None
     if not run_id or not execution_arn:
+        try:
+            response_preview = json.dumps(body, ensure_ascii=False)
+        except Exception:
+            response_preview = str(body)
+        if len(response_preview) > 1000:
+            response_preview = response_preview[:1000] + "..."
+        log.error(
+            "team_task_missing_ids",
+            extra={
+                "response_preview": response_preview,
+                "has_run_id": bool(run_id),
+                "has_execution_arn": bool(execution_arn),
+            },
+        )
         raise RuntimeError("team_task_missing_ids")
 
     return {"run_id": run_id, "execution_arn": execution_arn}
