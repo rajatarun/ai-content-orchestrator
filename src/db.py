@@ -5,6 +5,7 @@ import uuid
 import boto3
 from boto3.dynamodb.conditions import Key, Attr
 from logger import get_logger
+from statuses import DRAFT, PUBLISHED
 
 log = get_logger("db")
 ddb = boto3.resource("dynamodb")
@@ -33,7 +34,7 @@ def put_article(payload: dict) -> dict:
         "title": payload.get("title",""),
         "sourceInputs": payload.get("sourceInputs",""),
         "tags": payload.get("tags", []),
-        "status": payload.get("status","DRAFT"),
+        "status": payload.get("status", DRAFT),
         "createdAt": created,
         "updatedAt": created,
         "scheduledAt": payload.get("scheduledAt"),
@@ -89,7 +90,7 @@ def list_published_between(date_from: str, date_to: str, limit: int = 50) -> Lis
     log.info("list_published_between", extra={"from": date_from, "to": date_to, "limit": limit})
     resp = _t().query(
         IndexName="StatusPublishedIndex",
-        KeyConditionExpression=Key("status").eq("PUBLISHED") & Key("publishedAt").between(date_from, date_to),
+        KeyConditionExpression=Key("status").eq(PUBLISHED) & Key("publishedAt").between(date_from, date_to),
         ScanIndexForward=False,
         Limit=limit
     )

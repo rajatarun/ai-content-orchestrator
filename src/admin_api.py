@@ -10,6 +10,16 @@ from db import (
     put_article, get_article, update_article, list_by_status,
     list_events, put_subscriber, list_subscribers, delete_subscriber
 )
+from statuses import (
+    ALL_ARTICLE_STATUSES,
+    APPROVED,
+    ARCHIVED,
+    AWAITING_APPROVAL,
+    DRAFT,
+    FAILED,
+    PUBLISHED,
+    REVISION_REQUESTED,
+)
 
 log = get_logger("admin_api")
 lambda_client = boto3.client("lambda")
@@ -81,7 +91,9 @@ def lambda_handler(event, context):
         return _resp(event, 201, put_article(body))
 
     if path == "/admin/articles" and method == "GET":
-        status = (qs.get("status") or ["DRAFT"])[0]
+        status = (qs.get("status") or [DRAFT])[0].strip().upper()
+        if status not in ALL_ARTICLE_STATUSES:
+            return _resp(event, 400, {"error": f"invalid status '{status}'"})
         limit = int((qs.get("limit") or ["20"])[0])
         return _resp(event, 200, {"items": list_by_status(status, limit=limit)})
 
@@ -119,7 +131,7 @@ def lambda_handler(event, context):
                 return _resp(event, 202, {"ok": True})
 
             if action == "approve":
-                updated = update_article(aid, {"status": "APPROVED"})
+                updated = update_article(aid, {"status": APPROVED})
                 try:
                     s3_info = publish_article_to_s3(updated)
                     add_event(aid, "PUBLISHED_TO_S3", f"Uploaded to s3://{s3_info['bucket']}/{s3_info['key']}")
@@ -130,15 +142,29 @@ def lambda_handler(event, context):
 
             if action == "request-edits":
                 note = body.get("revisionNote", "")
-                return _resp(event, 200, {"ok": True, "article": update_article(aid, {"status": "REVISION_REQUESTED", "revisionNote": note})})
+                return _resp(event, 200, {"ok": True, "article": update_article(aid, {"status": REVISION_REQUESTED, "revisionNote": note})})
 
             if action == "reject":
                 reason = body.get("reason", "")
-                return _resp(event, 200, {"ok": True, "article": update_article(aid, {"status": "REJECTED", "revisionNote": reason})})
+                return _resp(event, 200, {"ok": True, "article": update_article(aid, {"status": FAILED, "revisionNote": reason})})
+
+            if action == "submit-for-approval":
+                return _resp(event, 200, {"ok": True, "article": update_article(aid, {"status": AWAITING_APPROVAL})})
+
+            if action == "mark-failed":
+                reason = body.get("reason", "")
+                return _resp(event, 200, {"ok": True, "article": update_article(aid, {"status": FAILED, "revisionNote": reason})})
+
+            if action == "archive":
+                reason = body.get("reason", "")
+                patch = {"status": ARCHIVED}
+                if reason:
+                    patch["revisionNote"] = reason
+                return _resp(event, 200, {"ok": True, "article": update_article(aid, patch)})
 
             if action == "mark-published":
                 return _resp(event, 200, {"ok": True, "article": update_article(aid, {
-                    "status": "PUBLISHED",
+                    "status": PUBLISHED,
                     "publishedAt": body.get("publishedAt"),
                     "publishedUrl": body.get("publishedUrl"),
                 })})

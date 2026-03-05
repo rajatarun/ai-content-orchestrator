@@ -19,3 +19,14 @@ bash scripts/deploy.sh
 - Gemini API key in Secrets Manager as JSON: { "key": "YOUR_GEMINI_API_KEY" }
 
 Generated: 2026-02-28T00:55:34.825675Z
+
+## Article lifecycle statuses
+- `DRAFT`
+- `REVISION_REQUESTED`
+- `AWAITING_APPROVAL`
+- `APPROVED`
+- `PUBLISHED`
+- `FAILED`
+- `ARCHIVED`
+
+The admin API now supports explicit actions for `submit-for-approval`, `mark-failed`, and `archive`.
