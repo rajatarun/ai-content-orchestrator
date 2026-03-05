@@ -8,7 +8,7 @@ from logger import get_logger
 from publisher import publish_article_to_s3
 from db import (
     put_article, get_article, update_article, list_by_status,
-    list_events, put_subscriber, list_subscribers, delete_subscriber
+    list_events, put_subscriber, list_subscribers, delete_subscriber, add_event
 )
 from statuses import (
     ALL_ARTICLE_STATUSES,
@@ -23,6 +23,42 @@ from statuses import (
 
 log = get_logger("admin_api")
 lambda_client = boto3.client("lambda")
+
+_ACTION_ALIASES = {
+    "request-edits": "request-edits",
+    "request-edit": "request-edits",
+    "request_edits": "request-edits",
+    "request_edit": "request-edits",
+    "reject": "reject",
+    "mark-failed": "mark-failed",
+    "mark_failed": "mark-failed",
+}
+
+
+def _normalize_action(action):
+    return _ACTION_ALIASES.get((action or "").strip().lower(), (action or "").strip().lower())
+
+
+def _decorate_article_with_actions(article):
+    if not isinstance(article, dict):
+        return article
+
+    status = (article.get("status") or "").upper()
+    actions_by_status = {
+        DRAFT: ["generate", "submit-for-approval", "request-edits", "reject"],
+        REVISION_REQUESTED: ["submit-for-approval", "reject"],
+        AWAITING_APPROVAL: ["approve", "request-edits", "reject"],
+        APPROVED: ["mark-published", "archive"],
+        PUBLISHED: ["archive"],
+        FAILED: ["submit-for-approval", "archive"],
+        ARCHIVED: [],
+    }
+
+    ctas = actions_by_status.get(status, [])
+    article_with_actions = dict(article)
+    article_with_actions["ctas"] = ctas
+    article_with_actions["ctaPresentation"] = "dropdown" if len(ctas) > 2 else "inline"
+    return article_with_actions
 
 def _json_safe(obj):
     if isinstance(obj, list):
@@ -95,7 +131,8 @@ def lambda_handler(event, context):
         if status not in ALL_ARTICLE_STATUSES:
             return _resp(event, 400, {"error": f"invalid status '{status}'"})
         limit = int((qs.get("limit") or ["20"])[0])
-        return _resp(event, 200, {"items": list_by_status(status, limit=limit)})
+        items = [_decorate_article_with_actions(item) for item in list_by_status(status, limit=limit)]
+        return _resp(event, 200, {"items": items})
 
     if path.startswith("/admin/articles/"):
         parts = path.split("/")
@@ -103,12 +140,13 @@ def lambda_handler(event, context):
 
         if aid and len(parts) == 4 and method == "GET":
             it = get_article(aid)
-            return _resp(event, 200, it) if it else _resp(event, 404, {"error": "Not found"})
+            return _resp(event, 200, _decorate_article_with_actions(it)) if it else _resp(event, 404, {"error": "Not found"})
 
         if aid and len(parts) == 4 and method == "PATCH":
             body = _json(event)
             try:
-                return _resp(event, 200, update_article(aid, body))
+                updated = update_article(aid, body)
+                return _resp(event, 200, _decorate_article_with_actions(updated))
             except KeyError:
                 return _resp(event, 404, {"error": "Not found"})
 
@@ -116,7 +154,7 @@ def lambda_handler(event, context):
             return _resp(event, 200, {"items": list_events(aid)})
 
         if aid and len(parts) == 6 and parts[4] == "actions" and method == "POST":
-            action = parts[5]
+            action = _normalize_action(parts[5])
             body = _json(event)
 
             if action == "generate":
@@ -138,36 +176,42 @@ def lambda_handler(event, context):
                 except Exception as e:
                     log.exception("s3_upload_failed", extra={"id": aid})
                     return _resp(event, 500, {"error": "S3 upload failed", "details": str(e)})
-                return _resp(event, 200, {"ok": True, "article": updated, "s3": s3_info})
+                return _resp(event, 200, {"ok": True, "article": _decorate_article_with_actions(updated), "s3": s3_info})
 
             if action == "request-edits":
                 note = body.get("revisionNote", "")
-                return _resp(event, 200, {"ok": True, "article": update_article(aid, {"status": REVISION_REQUESTED, "revisionNote": note})})
+                updated = update_article(aid, {"status": REVISION_REQUESTED, "revisionNote": note})
+                return _resp(event, 200, {"ok": True, "article": _decorate_article_with_actions(updated)})
 
             if action == "reject":
                 reason = body.get("reason", "")
-                return _resp(event, 200, {"ok": True, "article": update_article(aid, {"status": FAILED, "revisionNote": reason})})
+                updated = update_article(aid, {"status": FAILED, "revisionNote": reason})
+                return _resp(event, 200, {"ok": True, "article": _decorate_article_with_actions(updated)})
 
             if action == "submit-for-approval":
-                return _resp(event, 200, {"ok": True, "article": update_article(aid, {"status": AWAITING_APPROVAL})})
+                updated = update_article(aid, {"status": AWAITING_APPROVAL})
+                return _resp(event, 200, {"ok": True, "article": _decorate_article_with_actions(updated)})
 
             if action == "mark-failed":
                 reason = body.get("reason", "")
-                return _resp(event, 200, {"ok": True, "article": update_article(aid, {"status": FAILED, "revisionNote": reason})})
+                updated = update_article(aid, {"status": FAILED, "revisionNote": reason})
+                return _resp(event, 200, {"ok": True, "article": _decorate_article_with_actions(updated)})
 
             if action == "archive":
                 reason = body.get("reason", "")
                 patch = {"status": ARCHIVED}
                 if reason:
                     patch["revisionNote"] = reason
-                return _resp(event, 200, {"ok": True, "article": update_article(aid, patch)})
+                updated = update_article(aid, patch)
+                return _resp(event, 200, {"ok": True, "article": _decorate_article_with_actions(updated)})
 
             if action == "mark-published":
-                return _resp(event, 200, {"ok": True, "article": update_article(aid, {
+                updated = update_article(aid, {
                     "status": PUBLISHED,
                     "publishedAt": body.get("publishedAt"),
                     "publishedUrl": body.get("publishedUrl"),
-                })})
+                })
+                return _resp(event, 200, {"ok": True, "article": _decorate_article_with_actions(updated)})
 
             return _resp(event, 404, {"error": "Unknown action"})
 
