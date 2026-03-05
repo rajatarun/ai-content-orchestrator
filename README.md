@@ -9,11 +9,15 @@ AWS-based automation for a weekly content pipeline:
 
 ## Deploy
 ```bash
-bash scripts/deploy.sh
+# Optional override for the source team stack
+TEAM_STACK_NAME=tarun-content-team bash scripts/deploy.sh
 ```
+
+The deploy script fetches `ArtifactBucket`, `StatusFunctionArn`, and `HttpApiUrl` from the team stack outputs and passes them as SAM parameter overrides.
 
 ## Prereqs
 - AWS SAM CLI
+- AWS CLI
 - Python 3.9 runtime (Lambda)
 - SES verified identity for sending email
 - Gemini API key in Secrets Manager as JSON: { "key": "YOUR_GEMINI_API_KEY" }

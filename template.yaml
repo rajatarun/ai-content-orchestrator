@@ -12,12 +12,15 @@ Parameters:
   SesFromEmail:
     Type: String
     Default: "rajatarun12@gmail.com"
-  TeamConfigBucket:
+  TeamArtifactBucket:
     Type: String
-    Description: S3 bucket name from tarun-content-team stack output ConfigBucket
+    Description: S3 bucket name from tarun-content-team stack output ArtifactBucket
   TeamStatusFunctionArn:
     Type: String
     Description: Lambda ARN from tarun-content-team stack output StatusFunctionArn
+  TeamHttpApiUrl:
+    Type: String
+    Description: HTTP API URL from tarun-content-team stack output HttpApiUrl
 
 Globals:
   Function:
@@ -195,8 +198,9 @@ Resources:
           NEWSLETTER_FN_NAME: !Ref NewsletterFunction
           ARTICLES_BUCKET: tarun-rag-docs-239571291755-us-east-1
           ARTICLES_PREFIX: docs/articles
-          CONFIG_BUCKET: !Ref TeamConfigBucket
+          ARTIFACT_BUCKET: !Ref TeamArtifactBucket
           STATUS_FUNCTION_ARN: !Ref TeamStatusFunctionArn
+          HTTP_API_URL: !Ref TeamHttpApiUrl
       Policies:
         - AWSLambdaBasicExecutionRole
         - DynamoDBCrudPolicy:
