@@ -11,7 +11,7 @@ permissions:
 
 env:
   REGION: ${{ vars.REGION || 'us-east-1' }}
-  STACK_NAME: ${{ vars.STACK_NAME || 'taskweave-content-orchestrator' }}
+  STACK_NAME: ${{ vars.STACK_NAME || 'tarun-admin-content' }}
   AWS_DEPLOY_ROLE_ARN: arn:aws:iam::239571291755:role/teamweave-github-actions-sam-deployer
 jobs:
   deploy:
