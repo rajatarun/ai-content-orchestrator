@@ -7,6 +7,7 @@ AWS-based automation for a weekly content pipeline:
 - DynamoDB-backed lifecycle + event tracking
 - On approval, upload the article JSON to S3: `articles/{articleId}.json`
 
+
 ## Deploy
 ```bash
 bash scripts/deploy.sh
