@@ -47,19 +47,18 @@ jobs:
 
       - name: Load shared stack outputs
         run: |
-          CONFIG_BUCKET=$(aws cloudformation describe-stacks \
+          STACK_OUTPUTS=$(aws cloudformation describe-stacks \
             --stack-name "${TEAM_STACK_NAME}" \
             --region "${REGION}" \
-            --query "Stacks[0].Outputs[?OutputKey=='ConfigBucket'].OutputValue" \
-            --output text)
-          STATUS_FUNCTION_ARN=$(aws cloudformation describe-stacks \
-            --stack-name "${TEAM_STACK_NAME}" \
-            --region "${REGION}" \
-            --query "Stacks[0].Outputs[?OutputKey=='StatusFunctionArn'].OutputValue" \
-            --output text)
+            --query "Stacks[0].Outputs" \
+            --output json)
 
-          if [ -z "${CONFIG_BUCKET}" ] || [ "${CONFIG_BUCKET}" = "None" ]; then
-            echo "ConfigBucket output was not found in ${TEAM_STACK_NAME}" >&2
+          ARTIFACT_BUCKET=$(echo "${STACK_OUTPUTS}" | python -c "import json,sys; outputs={x['OutputKey']: x['OutputValue'] for x in json.load(sys.stdin)}; print(outputs.get('ArtifactBucket',''))")
+          STATUS_FUNCTION_ARN=$(echo "${STACK_OUTPUTS}" | python -c "import json,sys; outputs={x['OutputKey']: x['OutputValue'] for x in json.load(sys.stdin)}; print(outputs.get('StatusFunctionArn',''))")
+          HTTP_API_URL=$(echo "${STACK_OUTPUTS}" | python -c "import json,sys; outputs={x['OutputKey']: x['OutputValue'] for x in json.load(sys.stdin)}; print(outputs.get('HttpApiUrl',''))")
+
+          if [ -z "${ARTIFACT_BUCKET}" ] || [ "${ARTIFACT_BUCKET}" = "None" ]; then
+            echo "ArtifactBucket output was not found in ${TEAM_STACK_NAME}" >&2
             exit 1
           fi
 
@@ -68,9 +67,16 @@ jobs:
             exit 1
           fi
 
+          if [ -z "${HTTP_API_URL}" ] || [ "${HTTP_API_URL}" = "None" ]; then
+            echo "HttpApiUrl output was not found in ${TEAM_STACK_NAME}" >&2
+            exit 1
+          fi
+
           {
-            echo "TEAM_CONFIG_BUCKET=${CONFIG_BUCKET}"
+            echo "TEAM_ARTIFACT_BUCKET=${ARTIFACT_BUCKET}"
             echo "TEAM_STATUS_FUNCTION_ARN=${STATUS_FUNCTION_ARN}"
+            echo "TEAM_HTTP_API_URL=${HTTP_API_URL}"
+            echo "SAM_PARAMETER_OVERRIDES=ArtifactBucket=${ARTIFACT_BUCKET} StatusFunctionArn=${STATUS_FUNCTION_ARN} HttpApiUrl=${HTTP_API_URL}"
           } >> "$GITHUB_ENV"
 
       - name: SAM deploy
@@ -81,8 +87,6 @@ jobs:
             --region "${REGION}" \
             --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM \
             --resolve-s3 \
-            --parameter-overrides \
-              TeamConfigBucket="${TEAM_CONFIG_BUCKET}" \
-              TeamStatusFunctionArn="${TEAM_STATUS_FUNCTION_ARN}" \
+            --parameter-overrides ${SAM_PARAMETER_OVERRIDES} \
             --no-confirm-changeset \
             --no-fail-on-empty-changeset
