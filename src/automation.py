@@ -109,8 +109,25 @@ def createTeamTask(topic, objective):
     except Exception as e:
         raise RuntimeError("team_task_failed") from e
 
-    run_id = body.get("run_id") if isinstance(body, dict) else None
-    execution_arn = body.get("execution_arn") if isinstance(body, dict) else None
+    run_id = None
+    execution_arn = None
+
+    if isinstance(body, dict):
+        run_id = body.get("run_id")
+        execution_arn = body.get("execution_arn") or body.get("state_fn_execution_arn")
+
+        # Some gateway responses wrap the real payload as a JSON string.
+        preview = body.get("response_preview")
+        if isinstance(preview, str):
+            try:
+                nested = json.loads(preview)
+            except Exception:
+                nested = None
+
+            if isinstance(nested, dict):
+                run_id = run_id or nested.get("run_id")
+                execution_arn = execution_arn or nested.get("execution_arn") or nested.get("state_fn_execution_arn")
+
     if not run_id or not execution_arn:
         try:
             response_preview = json.dumps(body, ensure_ascii=False)
