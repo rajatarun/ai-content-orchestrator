@@ -237,12 +237,6 @@ Resources:
             Effect: Allow
             Action: secretsmanager:GetSecretValue
             Resource: "*"
-      Events:
-        WeeklyGenerateDrafts:
-          Type: Schedule
-          Properties:
-            Schedule: cron(0 15 ? * MON *)
-            Enabled: true
 
   NewsletterFunction:
     Type: AWS::Serverless::Function
@@ -269,12 +263,40 @@ Resources:
               - ses:SendEmail
               - ses:SendRawEmail
             Resource: "*"
-      Events:
-        WeeklyNewsletter:
-          Type: Schedule
-          Properties:
-            Schedule: cron(0 0 ? * MON *)
-            Enabled: true
+
+  WeeklyGenerateDraftsRule:
+    Type: AWS::Events::Rule
+    Properties:
+      ScheduleExpression: cron(0 15 ? * MON *)
+      State: ENABLED
+      Targets:
+        - Arn: !GetAtt GenerateDraftsFunction.Arn
+          Id: GenerateDraftsFunctionTarget
+
+  WeeklyGenerateDraftsPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref GenerateDraftsFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt WeeklyGenerateDraftsRule.Arn
+
+  WeeklyNewsletterRule:
+    Type: AWS::Events::Rule
+    Properties:
+      ScheduleExpression: cron(0 0 ? * MON *)
+      State: ENABLED
+      Targets:
+        - Arn: !GetAtt NewsletterFunction.Arn
+          Id: NewsletterFunctionTarget
+
+  WeeklyNewsletterPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref NewsletterFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt WeeklyNewsletterRule.Arn
 
 Outputs:
   ApiBaseUrl:
