@@ -241,6 +241,9 @@ Resources:
           TABLE_NAME: !Ref ContentTable
           GEMINI_API_KEY_SECRET_NAME: !Ref GeminiApiKeySecretName
           GEMINI_MODEL: !Ref GeminiModel
+          HTTP_API_URL: !Ref HttpApiUrl
+          ARTIFACT_BUCKET: !Ref ArtifactBucket
+          MAX_POLL_SECONDS: "90"
       Policies:
         - AWSLambdaBasicExecutionRole
         - DynamoDBCrudPolicy:
@@ -249,6 +252,21 @@ Resources:
             Effect: Allow
             Action: secretsmanager:GetSecretValue
             Resource: "*"
+        - Statement:
+            Effect: Allow
+            Action:
+              - states:DescribeExecution
+            Resource: "*"
+        - Statement:
+            Effect: Allow
+            Action:
+              - s3:GetObject
+            Resource: !Sub "arn:aws:s3:::${ArtifactBucket}/*"
+        - Statement:
+            Effect: Allow
+            Action:
+              - s3:ListBucket
+            Resource: !Sub "arn:aws:s3:::${ArtifactBucket}"
 
   NewsletterFunction:
     Type: AWS::Serverless::Function
