@@ -189,6 +189,15 @@ def fallbackToBAUGeneration(topic, objective):
     return drafts
 
 
+def _coerce_text(value) -> str:
+    if isinstance(value, str):
+        return value.strip()
+    if isinstance(value, list):
+        parts = [item.strip() for item in value if isinstance(item, str) and item.strip()]
+        return "\n".join(parts)
+    return ""
+
+
 def _resolve_generation_inputs(event: dict):
     article_id = (event or {}).get("articleId")
     topic = (event or {}).get("topic")
@@ -202,8 +211,8 @@ def _resolve_generation_inputs(event: dict):
         topic = topic or article.get("title") or ""
         objective = objective or article.get("sourceInputs") or ""
 
-    topic = (topic or "").strip()
-    objective = (objective or "").strip()
+    topic = _coerce_text(topic)
+    objective = _coerce_text(objective)
     if not topic or not objective:
         raise RuntimeError("topic_and_objective_required")
 
