@@ -152,18 +152,52 @@ def pollExecution(executionArn):
     max_wait = _env_int("MAX_POLL_SECONDS", 90)
     interval = 1.0
     started = time.time()
+    poll_attempt = 0
+
+    log.info(
+        "poll_execution_started",
+        extra={
+            "execution_arn": executionArn,
+            "max_wait_seconds": max_wait,
+            "initial_interval_seconds": interval,
+        },
+    )
 
     while True:
+        poll_attempt += 1
         resp = stepfunctions.describe_execution(executionArn=executionArn)
         status = resp.get("status")
+        elapsed = round(time.time() - started, 2)
+
+        log.info(
+            "poll_execution_result",
+            extra={
+                "execution_arn": executionArn,
+                "attempt": poll_attempt,
+                "status": status,
+                "elapsed_seconds": elapsed,
+                "next_sleep_seconds": interval,
+            },
+        )
 
         if status == "SUCCEEDED":
+            log.info(
+                "poll_execution_completed",
+                extra={"execution_arn": executionArn, "attempt": poll_attempt, "elapsed_seconds": elapsed, "status": status},
+            )
             return status
         if status in {"FAILED", "TIMED_OUT", "ABORTED"}:
+            log.warning(
+                "poll_execution_terminal_failure",
+                extra={"execution_arn": executionArn, "attempt": poll_attempt, "elapsed_seconds": elapsed, "status": status},
+            )
             return status
 
-        elapsed = time.time() - started
         if elapsed >= max_wait:
+            log.warning(
+                "poll_execution_timeout",
+                extra={"execution_arn": executionArn, "attempt": poll_attempt, "elapsed_seconds": elapsed, "status": status},
+            )
             return "RUNNING"
 
         time.sleep(interval)
