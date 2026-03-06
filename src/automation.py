@@ -252,6 +252,7 @@ def _resolve_generation_inputs(event: dict):
 
 def _persist_generation_result(article_id: str, current_article: dict, drafts: list, source: str, status: str):
     if not article_id:
+        log.warning("persist_generation_skipped_missing_article_id")
         return
 
     first = drafts[0] if drafts else {}
@@ -266,7 +267,57 @@ def _persist_generation_result(article_id: str, current_article: dict, drafts: l
 
     patch = {"generated": generated, "status": AWAITING_APPROVAL}
 
-    update_article(article_id, patch)
+    log.info(
+        "persist_generation_updating_article",
+        extra={
+            "article_id": article_id,
+            "source": source,
+            "generation_status": status,
+            "draft_count": len(drafts),
+            "target_status": AWAITING_APPROVAL,
+        },
+    )
+
+    updated_article = update_article(article_id, patch)
+    saved_generated = updated_article.get("generated") if isinstance(updated_article, dict) else {}
+    saved_source = (saved_generated or {}).get("source")
+    saved_status = updated_article.get("status") if isinstance(updated_article, dict) else None
+    saved_draft_count = len((saved_generated or {}).get("drafts", [])) if isinstance(saved_generated, dict) else 0
+
+    log.info(
+        "persist_generation_update_result",
+        extra={
+            "article_id": article_id,
+            "saved_status": saved_status,
+            "saved_source": saved_source,
+            "saved_draft_count": saved_draft_count,
+            "status_match": saved_status == AWAITING_APPROVAL,
+            "source_match": saved_source == source,
+            "draft_count_match": saved_draft_count == len(drafts),
+        },
+    )
+
+    reloaded_article = get_article(article_id)
+    if isinstance(reloaded_article, dict):
+        reloaded_generated = reloaded_article.get("generated")
+        reloaded_source = (reloaded_generated or {}).get("source") if isinstance(reloaded_generated, dict) else None
+        reloaded_status = reloaded_article.get("status")
+        reloaded_draft_count = len((reloaded_generated or {}).get("drafts", [])) if isinstance(reloaded_generated, dict) else 0
+        log.info(
+            "persist_generation_reload_check",
+            extra={
+                "article_id": article_id,
+                "reloaded_status": reloaded_status,
+                "reloaded_source": reloaded_source,
+                "reloaded_draft_count": reloaded_draft_count,
+                "status_match": reloaded_status == AWAITING_APPROVAL,
+                "source_match": reloaded_source == source,
+                "draft_count_match": reloaded_draft_count == len(drafts),
+            },
+        )
+    else:
+        log.warning("persist_generation_reload_missing", extra={"article_id": article_id})
+
     add_event(article_id, "GENERATED", f"Generation complete using {source}; moved to {AWAITING_APPROVAL}")
 
 
