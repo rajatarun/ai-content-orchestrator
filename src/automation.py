@@ -1,5 +1,6 @@
 import json
 import os
+import time
 import urllib.error
 import urllib.request
 
@@ -13,7 +14,17 @@ from statuses import AWAITING_APPROVAL
 log = get_logger("automation")
 
 s3 = boto3.client("s3")
+stepfunctions = boto3.client("stepfunctions")
 
+
+def _env_int(name: str, default: int) -> int:
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    try:
+        return int(raw)
+    except Exception:
+        return default
 
 
 def _build_bau_prompt(topic: str, objective: str) -> dict:
@@ -137,6 +148,28 @@ def createTeamTask(topic, objective):
     return {"run_id": run_id, "execution_arn": execution_arn}
 
 
+def pollExecution(executionArn):
+    max_wait = _env_int("MAX_POLL_SECONDS", 90)
+    interval = 1.0
+    started = time.time()
+
+    while True:
+        resp = stepfunctions.describe_execution(executionArn=executionArn)
+        status = resp.get("status")
+
+        if status == "SUCCEEDED":
+            return status
+        if status in {"FAILED", "TIMED_OUT", "ABORTED"}:
+            return status
+
+        elapsed = time.time() - started
+        if elapsed >= max_wait:
+            return "RUNNING"
+
+        time.sleep(interval)
+        interval = min(interval + 1.0, 5.0)
+
+
 def fetchWriterArtifact(runId):
     bucket = os.environ.get("ARTIFACT_BUCKET")
     if not bucket:
@@ -253,10 +286,15 @@ def generate_drafts_handler(event, context):
         run_id = task["run_id"]
         execution_arn = task["execution_arn"]
         log.info("teamweave_started", extra={"run_id": run_id, "execution_arn": execution_arn[:48]})
+
+        status = pollExecution(execution_arn)
+        if status != "SUCCEEDED":
+            raise RuntimeError(f"execution_{status.lower()}")
+
         drafts = fetchWriterArtifact(run_id)
         response = {
             "source": "teamweave",
-            "status": "STARTED",
+            "status": "SUCCEEDED",
             "run_id": run_id,
             "execution_arn": execution_arn,
             "drafts": drafts,
