@@ -149,7 +149,7 @@ def createTeamTask(topic, objective):
 
 
 def pollExecution(executionArn):
-    max_wait = _env_int("MAX_POLL_SECONDS", 90)
+    max_wait = _env_int("MAX_POLL_SECONDS", 120)
     interval = 1.0
     started = time.time()
     poll_attempt = 0
