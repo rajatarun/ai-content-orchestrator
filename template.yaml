@@ -224,6 +224,12 @@ Resources:
             RestApiId: !Ref RestApi
             Path: /admin
             Method: ANY
+        AdminArticlePatch:
+          Type: Api
+          Properties:
+            RestApiId: !Ref RestApi
+            Path: /admin/articles/{id}
+            Method: PATCH
         AdminProxy:
           Type: Api
           Properties:
