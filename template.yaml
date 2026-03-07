@@ -21,6 +21,10 @@ Parameters:
   HttpApiUrl:
     Type: String
     Description: HTTP API URL from tarun-content-team stack output HttpApiUrl
+  ApprovalNotificationEmail:
+    Type: String
+    Default: rajatarun12@gmail.com
+    Description: Email address that receives approval-required SNS notifications
 
 Globals:
   Function:
@@ -250,6 +254,7 @@ Resources:
           HTTP_API_URL: !Ref HttpApiUrl
           ARTIFACT_BUCKET: !Ref ArtifactBucket
           MAX_POLL_SECONDS: "90"
+          APPROVAL_NOTIFICATION_TOPIC_ARN: !Ref ApprovalNotificationTopic
       Policies:
         - AWSLambdaBasicExecutionRole
         - DynamoDBCrudPolicy:
@@ -273,6 +278,11 @@ Resources:
             Action:
               - s3:ListBucket
             Resource: !Sub "arn:aws:s3:::${ArtifactBucket}"
+        - Statement:
+            Effect: Allow
+            Action:
+              - sns:Publish
+            Resource: !Ref ApprovalNotificationTopic
 
   NewsletterFunction:
     Type: AWS::Serverless::Function
@@ -299,6 +309,18 @@ Resources:
               - ses:SendEmail
               - ses:SendRawEmail
             Resource: "*"
+
+  ApprovalNotificationTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      DisplayName: Content Approval Notifications
+
+  ApprovalNotificationTopicSubscription:
+    Type: AWS::SNS::Subscription
+    Properties:
+      Protocol: email
+      Endpoint: !Ref ApprovalNotificationEmail
+      TopicArn: !Ref ApprovalNotificationTopic
 
   WeeklyGenerateDraftsRule:
     Type: AWS::Events::Rule
@@ -345,3 +367,5 @@ Outputs:
     Value: !Ref GenerateDraftsFunction
   NewsletterFunctionName:
     Value: !Ref NewsletterFunction
+  ApprovalNotificationTopicArn:
+    Value: !Ref ApprovalNotificationTopic

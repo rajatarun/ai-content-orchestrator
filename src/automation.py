@@ -15,6 +15,7 @@ log = get_logger("automation")
 
 s3 = boto3.client("s3")
 stepfunctions = boto3.client("stepfunctions")
+sns = boto3.client("sns")
 
 
 def _env_int(name: str, default: int) -> int:
@@ -353,6 +354,45 @@ def _persist_generation_result(article_id: str, current_article: dict, drafts: l
         log.warning("persist_generation_reload_missing", extra={"article_id": article_id})
 
     add_event(article_id, "GENERATED", f"Generation complete using {source}; moved to {AWAITING_APPROVAL}")
+    _notify_approval_requested(article_id, updated_article, source, status, drafts)
+
+
+def _notify_approval_requested(article_id: str, article: dict, source: str, generation_status: str, drafts: list):
+    topic_arn = os.environ.get("APPROVAL_NOTIFICATION_TOPIC_ARN")
+    if not topic_arn:
+        log.info("approval_notification_skipped_missing_topic", extra={"article_id": article_id})
+        return
+
+    article_title = ""
+    if isinstance(article, dict):
+        article_title = (article.get("title") or "").strip()
+
+    subject = f"Article awaiting approval: {article_id}"
+    lines = [
+        "Article generation completed and is awaiting approval.",
+        f"Article ID: {article_id}",
+        f"Title: {article_title or 'N/A'}",
+        f"Generation source: {source}",
+        f"Generation status: {generation_status}",
+        f"Draft count: {len(drafts)}",
+        f"Current workflow status: {AWAITING_APPROVAL}",
+    ]
+
+    try:
+        sns.publish(
+            TopicArn=topic_arn,
+            Subject=subject[:100],
+            Message="\n".join(lines),
+        )
+        log.info(
+            "approval_notification_sent",
+            extra={"article_id": article_id, "topic_arn": topic_arn, "generation_source": source},
+        )
+    except Exception:
+        log.exception(
+            "approval_notification_failed",
+            extra={"article_id": article_id, "topic_arn": topic_arn, "generation_source": source},
+        )
 
 
 def generate_drafts_handler(event, context):
