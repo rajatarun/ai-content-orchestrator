@@ -138,12 +138,28 @@ Resources:
             RestApiId: !Ref RestApi
             Path: /site/posts
             Method: GET
+        SitePostsOptions:
+          Type: Api
+          Properties:
+            RestApiId: !Ref RestApi
+            Path: /site/posts
+            Method: OPTIONS
+            Auth:
+              ApiKeyRequired: false
         SitePostById:
           Type: Api
           Properties:
             RestApiId: !Ref RestApi
             Path: /site/posts/{id}
             Method: GET
+        SitePostByIdOptions:
+          Type: Api
+          Properties:
+            RestApiId: !Ref RestApi
+            Path: /site/posts/{id}
+            Method: OPTIONS
+            Auth:
+              ApiKeyRequired: false
   ContentTable:
     Type: AWS::DynamoDB::Table
     Properties:
