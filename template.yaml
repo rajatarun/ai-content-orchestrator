@@ -21,6 +21,9 @@ Parameters:
   HttpApiUrl:
     Type: String
     Description: HTTP API URL from tarun-content-team stack output HttpApiUrl
+  AuthorizerFunctionArn:
+    Type: String
+    Description: Lambda ARN from siwe-infra stack output autorizerfunctionarn
   ApprovalNotificationEmail:
     Type: String
     Default: rajatarun12@gmail.com
@@ -186,7 +189,14 @@ Resources:
       EndpointConfiguration: REGIONAL
       Auth:
         ApiKeyRequired: true
-        DefaultAuthorizer: AWS_IAM
+        DefaultAuthorizer: SiweLambdaAuthorizer
+        Authorizers:
+          SiweLambdaAuthorizer:
+            FunctionArn: !Ref AuthorizerFunctionArn
+            FunctionPayloadType: REQUEST
+            Identity:
+              Headers:
+                - Authorization
       Cors:
         AllowOrigin: "'*'"
         AllowMethods: "'GET,POST,PATCH,DELETE,OPTIONS'"
