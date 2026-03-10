@@ -186,6 +186,7 @@ Resources:
       EndpointConfiguration: REGIONAL
       Auth:
         ApiKeyRequired: true
+        DefaultAuthorizer: AWS_IAM
       Cors:
         AllowOrigin: "'*'"
         AllowMethods: "'GET,POST,PATCH,DELETE,OPTIONS'"
