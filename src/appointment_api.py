@@ -12,7 +12,7 @@ def _cors_headers(event):
     origin = (event.get("headers") or {}).get("origin") or "*"
     return {
         "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Headers": "content-type",
+        "Access-Control-Allow-Headers": "content-type,authorization,x-api-key,accept",
         "Access-Control-Allow-Methods": "POST,OPTIONS",
     }
 

@@ -225,7 +225,7 @@ Resources:
       Cors:
         AllowOrigin: "'*'"
         AllowMethods: "'GET,POST,PATCH,DELETE,OPTIONS'"
-        AllowHeaders: "'content-type,authorization,x-api-key'"
+        AllowHeaders: "'content-type,authorization,x-api-key,accept'"
 
   RestApiApiKey:
     Type: AWS::ApiGateway::ApiKey
