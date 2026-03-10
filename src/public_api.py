@@ -20,7 +20,7 @@ def _cors_headers(event):
     allow_origin = origin if allowed == "*" or origin == allowed else allowed
     return {
         "Access-Control-Allow-Origin": allow_origin,
-        "Access-Control-Allow-Headers": "content-type",
+        "Access-Control-Allow-Headers": "content-type,authorization,x-api-key,accept",
         "Access-Control-Allow-Methods": "POST,OPTIONS",
         "Vary": "Origin",
     }
