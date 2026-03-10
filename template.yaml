@@ -186,18 +186,40 @@ Resources:
       EndpointConfiguration: REGIONAL
       Auth:
         ApiKeyRequired: true
-        UsagePlan:
-          CreateUsagePlan: PER_API
-          Quota:
-            Limit: 10000
-            Period: DAY
-          Throttle:
-            BurstLimit: 100
-            RateLimit: 50
       Cors:
         AllowOrigin: "'*'"
         AllowMethods: "'GET,POST,PATCH,DELETE,OPTIONS'"
         AllowHeaders: "'content-type,x-api-key'"
+
+  RestApiApiKey:
+    Type: AWS::ApiGateway::ApiKey
+    Properties:
+      Enabled: true
+      Name: !Sub "${AWS::StackName}-rest-api-key"
+      StageKeys:
+        - RestApiId: !Ref RestApi
+          StageName: prod
+
+  RestApiUsagePlan:
+    Type: AWS::ApiGateway::UsagePlan
+    Properties:
+      UsagePlanName: !Sub "${AWS::StackName}-rest-api-usage-plan"
+      ApiStages:
+        - ApiId: !Ref RestApi
+          Stage: prod
+      Quota:
+        Limit: 10000
+        Period: DAY
+      Throttle:
+        BurstLimit: 100
+        RateLimit: 50
+
+  RestApiUsagePlanKey:
+    Type: AWS::ApiGateway::UsagePlanKey
+    Properties:
+      KeyId: !Ref RestApiApiKey
+      KeyType: API_KEY
+      UsagePlanId: !Ref RestApiUsagePlan
 
   AdminApiFunction:
     Type: AWS::Serverless::Function
