@@ -13,6 +13,7 @@ env:
   REGION: ${{ vars.REGION || 'us-east-1' }}
   STACK_NAME: ${{ vars.STACK_NAME || 'tarun-admin-content' }}
   TEAM_STACK_NAME: ${{ vars.TEAM_STACK_NAME || 'tarun-content-team' }}
+  SIWE_STACK_NAME: ${{ vars.SIWE_STACK_NAME || 'siwe-infra' }}
   AWS_DEPLOY_ROLE_ARN: arn:aws:iam::239571291755:role/teamweave-github-actions-sam-deployer
 jobs:
   deploy:
@@ -47,15 +48,22 @@ jobs:
 
       - name: Load shared stack outputs
         run: |
-          STACK_OUTPUTS=$(aws cloudformation describe-stacks \
+          TEAM_STACK_OUTPUTS=$(aws cloudformation describe-stacks \
             --stack-name "${TEAM_STACK_NAME}" \
             --region "${REGION}" \
             --query "Stacks[0].Outputs" \
             --output json)
 
-          ARTIFACT_BUCKET=$(echo "${STACK_OUTPUTS}" | python -c "import json,sys; outputs={x['OutputKey']: x['OutputValue'] for x in json.load(sys.stdin)}; print(outputs.get('ArtifactBucket',''))")
-          STATUS_FUNCTION_ARN=$(echo "${STACK_OUTPUTS}" | python -c "import json,sys; outputs={x['OutputKey']: x['OutputValue'] for x in json.load(sys.stdin)}; print(outputs.get('StatusFunctionArn',''))")
-          HTTP_API_URL=$(echo "${STACK_OUTPUTS}" | python -c "import json,sys; outputs={x['OutputKey']: x['OutputValue'] for x in json.load(sys.stdin)}; print(outputs.get('HttpApiUrl',''))")
+          SIWE_STACK_OUTPUTS=$(aws cloudformation describe-stacks \
+            --stack-name "${SIWE_STACK_NAME}" \
+            --region "${REGION}" \
+            --query "Stacks[0].Outputs" \
+            --output json)
+
+          ARTIFACT_BUCKET=$(echo "${TEAM_STACK_OUTPUTS}" | python -c "import json,sys; outputs={x['OutputKey']: x['OutputValue'] for x in json.load(sys.stdin)}; print(outputs.get('ArtifactBucket',''))")
+          STATUS_FUNCTION_ARN=$(echo "${TEAM_STACK_OUTPUTS}" | python -c "import json,sys; outputs={x['OutputKey']: x['OutputValue'] for x in json.load(sys.stdin)}; print(outputs.get('StatusFunctionArn',''))")
+          HTTP_API_URL=$(echo "${TEAM_STACK_OUTPUTS}" | python -c "import json,sys; outputs={x['OutputKey']: x['OutputValue'] for x in json.load(sys.stdin)}; print(outputs.get('HttpApiUrl',''))")
+          AUTORIZER_FUNCTION_ARN=$(echo "${SIWE_STACK_OUTPUTS}" | python -c "import json,sys; outputs={x['OutputKey']: x['OutputValue'] for x in json.load(sys.stdin)}; print(outputs.get('autorizerfunctionarn', outputs.get('AutorizerFunctionArn', outputs.get('AuthorizerFunctionArn',''))))")
 
           if [ -z "${ARTIFACT_BUCKET}" ] || [ "${ARTIFACT_BUCKET}" = "None" ]; then
             echo "ArtifactBucket output was not found in ${TEAM_STACK_NAME}" >&2
@@ -72,11 +80,17 @@ jobs:
             exit 1
           fi
 
+          if [ -z "${AUTORIZER_FUNCTION_ARN}" ] || [ "${AUTORIZER_FUNCTION_ARN}" = "None" ]; then
+            echo "autorizerfunctionarn output was not found in ${SIWE_STACK_NAME}" >&2
+            exit 1
+          fi
+
           {
             echo "TEAM_ARTIFACT_BUCKET=${ARTIFACT_BUCKET}"
             echo "TEAM_STATUS_FUNCTION_ARN=${STATUS_FUNCTION_ARN}"
             echo "TEAM_HTTP_API_URL=${HTTP_API_URL}"
-            echo "SAM_PARAMETER_OVERRIDES=ArtifactBucket=${ARTIFACT_BUCKET} StatusFunctionArn=${STATUS_FUNCTION_ARN} HttpApiUrl=${HTTP_API_URL}"
+            echo "SIWE_AUTORIZER_FUNCTION_ARN=${AUTORIZER_FUNCTION_ARN}"
+            echo "SAM_PARAMETER_OVERRIDES=ArtifactBucket=${ARTIFACT_BUCKET} StatusFunctionArn=${STATUS_FUNCTION_ARN} HttpApiUrl=${HTTP_API_URL} AuthorizerFunctionArn=${AUTORIZER_FUNCTION_ARN}"
           } >> "$GITHUB_ENV"
 
       - name: SAM deploy
