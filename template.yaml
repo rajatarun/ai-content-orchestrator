@@ -68,6 +68,9 @@ Resources:
             RestApiId: !Ref RestApi
             Path: /public/appointment
             Method: OPTIONS
+            Auth:
+              Authorizer: NONE
+              ApiKeyRequired: false
   PublicApiFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -102,6 +105,9 @@ Resources:
             RestApiId: !Ref RestApi
             Path: /public/subscribe
             Method: OPTIONS
+            Auth:
+              Authorizer: NONE
+              ApiKeyRequired: false
   SiteDataFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -145,6 +151,7 @@ Resources:
             Path: /site/posts
             Method: OPTIONS
             Auth:
+              Authorizer: NONE
               ApiKeyRequired: false
         SitePostById:
           Type: Api
@@ -159,6 +166,7 @@ Resources:
             Path: /site/posts/{id}
             Method: OPTIONS
             Auth:
+              Authorizer: NONE
               ApiKeyRequired: false
   ContentTable:
     Type: AWS::DynamoDB::Table
@@ -288,18 +296,45 @@ Resources:
             RestApiId: !Ref RestApi
             Path: /admin
             Method: ANY
+        AdminRootOptions:
+          Type: Api
+          Properties:
+            RestApiId: !Ref RestApi
+            Path: /admin
+            Method: OPTIONS
+            Auth:
+              Authorizer: NONE
+              ApiKeyRequired: false
         AdminArticlePatch:
           Type: Api
           Properties:
             RestApiId: !Ref RestApi
             Path: /admin/articles/{id}
             Method: PATCH
+        AdminArticleOptions:
+          Type: Api
+          Properties:
+            RestApiId: !Ref RestApi
+            Path: /admin/articles/{id}
+            Method: OPTIONS
+            Auth:
+              Authorizer: NONE
+              ApiKeyRequired: false
         AdminProxy:
           Type: Api
           Properties:
             RestApiId: !Ref RestApi
             Path: /admin/{proxy+}
             Method: ANY
+        AdminProxyOptions:
+          Type: Api
+          Properties:
+            RestApiId: !Ref RestApi
+            Path: /admin/{proxy+}
+            Method: OPTIONS
+            Auth:
+              Authorizer: NONE
+              ApiKeyRequired: false
 
   GenerateDraftsFunction:
     Type: AWS::Serverless::Function
