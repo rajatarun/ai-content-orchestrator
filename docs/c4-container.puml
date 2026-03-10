@@ -1,4 +1,5 @@
 @startuml C4-L2-Containers
+!pragma layout smetana
 
 ' ─────────────────────────────────────────────────────────────────
 '  C4 Architecture — TaskWeave Content Orchestrator
@@ -45,7 +46,7 @@ System_Boundary(contentSystem, "TaskWeave Content Orchestrator") {
 
     ContainerDb(s3Artifacts, "Artifact Bucket", "AWS S3 (shared stack)", "Stores TeamWeave run artifacts.\nPath: runs/{runId}/writer_linkedin.json")
 
-    Container(secretsManager, "Secrets Manager", "AWS Secrets Manager", "Stores Gemini API key as JSON:\n{ \"key\": \"...\" }")
+    Container(secretsManager, "Secrets Manager", "AWS Secrets Manager", "Stores Gemini API key as JSON:\n{ key: ... }")
 
     Container(snsTopic, "Approval Notification", "AWS SNS Topic", "Notifies reviewer by email when\na draft is ready for approval.")
 
