@@ -115,7 +115,10 @@ def createTeamTask(topic, objective):
 
     url = f"{base_url}/team/task"
     body = json.dumps(payload).encode("utf-8")
-    headers = {"Content-Type": "application/json"}
+    headers = {
+        "Content-Type": "application/json",
+        "x-api-key": "4TTffLxI7p7Whkgikvjd64oktvZod8uz5ajvi0S1",
+    }
 
     try:
         signed_headers = _sign_request_headers(url, "POST", body, headers)
