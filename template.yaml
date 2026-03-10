@@ -296,6 +296,8 @@ Resources:
             RestApiId: !Ref RestApi
             Path: /admin
             Method: ANY
+            Auth:
+              Authorizer: SiweLambdaAuthorizer
         AdminRootOptions:
           Type: Api
           Properties:
@@ -311,6 +313,8 @@ Resources:
             RestApiId: !Ref RestApi
             Path: /admin/articles/{id}
             Method: PATCH
+            Auth:
+              Authorizer: SiweLambdaAuthorizer
         AdminArticleOptions:
           Type: Api
           Properties:
@@ -326,6 +330,8 @@ Resources:
             RestApiId: !Ref RestApi
             Path: /admin/{proxy+}
             Method: ANY
+            Auth:
+              Authorizer: SiweLambdaAuthorizer
         AdminProxyOptions:
           Type: Api
           Properties:
