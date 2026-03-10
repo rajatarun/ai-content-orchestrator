@@ -271,6 +271,11 @@ Resources:
         - Statement:
             Effect: Allow
             Action:
+              - execute-api:Invoke
+            Resource: "*"
+        - Statement:
+            Effect: Allow
+            Action:
               - s3:GetObject
             Resource: !Sub "arn:aws:s3:::${ArtifactBucket}/*"
         - Statement:
