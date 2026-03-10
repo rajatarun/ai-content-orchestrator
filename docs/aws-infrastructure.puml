@@ -1,0 +1,220 @@
+@startuml AWS-Infrastructure-TaskWeave-Content-Orchestrator
+
+' ─────────────────────────────────────────────────────────────────────────────
+'  AWS Infrastructure Diagram — TaskWeave Content Orchestrator
+'  AWS Icons: https://github.com/awslabs/aws-icons-for-plantuml (v18.0)
+'  Icon sprite files are bundled locally in: docs/plantuml-libs/aws-icons/
+'  Render from the docs/ directory so relative paths resolve correctly.
+' ─────────────────────────────────────────────────────────────────────────────
+
+!define AWSPuml plantuml-libs/aws-icons
+!include AWSPuml/AWSCommon.puml
+!include AWSPuml/AWSSimplified.puml
+
+' ── Service icon sprites (all.puml bundles every sprite in a category) ───────
+!include AWSPuml/ApplicationIntegration/all.puml
+!include AWSPuml/Compute/all.puml
+!include AWSPuml/Database/all.puml
+!include AWSPuml/Storage/all.puml
+!include AWSPuml/BusinessApplications/all.puml
+!include AWSPuml/SecurityIdentityCompliance/all.puml
+!include AWSPuml/ManagementGovernance/all.puml
+!include AWSPuml/NetworkingContentDelivery/all.puml
+!include AWSPuml/General/all.puml
+
+' ── Visual style ──────────────────────────────────────────────────────────────
+skinparam {
+    BackgroundColor #FAFAFA
+    ArrowColor      #555555
+    ArrowThickness  1.5
+    RoundCorner     10
+    Padding         6
+    FontName        "Helvetica Neue"
+    FontSize        11
+    TitleFontSize   16
+    TitleFontStyle  bold
+}
+skinparam rectangle {
+    BorderColor     #AAAAAA
+    BorderThickness 1.5
+    FontStyle       bold
+}
+
+title AWS Infrastructure — TaskWeave Content Orchestrator\n(Stack: tarun-admin-content | Region: us-east-1)
+
+' ─────────────────────────────────────────────────────────────────────────────
+'  External Actors
+' ─────────────────────────────────────────────────────────────────────────────
+actor "Content Admin"        as Admin
+actor "Newsletter Subscriber" as Subscriber
+actor "Site Visitor"          as Visitor
+
+' ─────────────────────────────────────────────────────────────────────────────
+'  External Systems
+' ─────────────────────────────────────────────────────────────────────────────
+rectangle "External Systems" as ExtSystems #F0F0FF {
+    Internet(geminiApi,    "Google Gemini API\ngenerativelanguage.googleapis.com", "")
+    Internet(googleSearch, "Google Search\n(Gemini grounding tool)", "")
+
+    rectangle "Shared Stack — tarun-content-team" as SharedStack #E8F4FF {
+        StepFunctions(stepFunctions, "Step Functions\nWriter State Machine", "")
+        Lambda(statusFn,             "StatusFunction\n(Shared Lambda)", "")
+        SimpleStorageService(artifactBucket, "Artifact Bucket\nruns/{runId}/writer_linkedin.json", "")
+    }
+}
+
+' ─────────────────────────────────────────────────────────────────────────────
+'  AWS Cloud — tarun-admin-content stack
+' ─────────────────────────────────────────────────────────────────────────────
+rectangle "AWS Cloud — us-east-1" as AWSCloud #FFF8F0 {
+
+    ' ── API Layer ──────────────────────────────────────────────────────────
+    rectangle "API Layer" as ApiLayer #FFE8CC {
+        APIGateway(restApi, "REST API Gateway\n(prod stage | CORS: *)", "")
+    }
+
+    ' ── Compute ────────────────────────────────────────────────────────────
+    rectangle "Compute — Lambda (Python 3.11 | 512 MB | 180 s timeout)" as ComputeLayer #CCF5CC {
+
+        rectangle "API-triggered Functions" as ApiFunctions #E8FFE8 {
+            Lambda(adminApi,       "AdminApiFunction\nadmin_api.lambda_handler", "")
+            Lambda(publicApi,      "PublicApiFunction\npublic_api.lambda_handler", "")
+            Lambda(appointmentApi, "AppointmentApiFunction\nappointment_api.lambda_handler", "")
+            Lambda(siteData,       "SiteDataFunction\nsite_data.lambda_handler", "")
+        }
+
+        rectangle "Scheduled / Async Functions" as AsyncFunctions #DFFFDF {
+            Lambda(generateDrafts, "GenerateDraftsFunction\nautomation.generate_drafts_handler", "")
+            Lambda(newsletterFn,   "NewsletterFunction\nnewsletter.newsletter_handler", "")
+        }
+    }
+
+    ' ── Scheduling ─────────────────────────────────────────────────────────
+    rectangle "Scheduling (EventBridge)" as ScheduleLayer #CCE8FF {
+        EventBridge(eb1, "WeeklyGenerateDraftsRule\ncron(0 15 ? * MON *)\nEvery Monday 15:15 UTC", "")
+        EventBridge(eb2, "WeeklyNewsletterRule\ncron(0 0 ? * MON *)\nEvery Monday 00:00 UTC", "")
+    }
+
+    ' ── Messaging ──────────────────────────────────────────────────────────
+    rectangle "Messaging" as MessagingLayer #F5CCFF {
+        SimpleNotificationService(snsTopic,
+            "ApprovalNotificationTopic\nContent Approval Notifications\nEmail subscription → reviewer", "")
+    }
+
+    ' ── Storage ────────────────────────────────────────────────────────────
+    rectangle "Storage" as StorageLayer #FFFFCC {
+        DynamoDB(contentTable,
+            "ContentTable  (PAY_PER_REQUEST)\npk (HASH) + sk (RANGE)\nGSI: StatusUpdatedIndex\nGSI: StatusPublishedIndex", "")
+        SimpleStorageService(articlesS3,
+            "S3 Articles Bucket\ntarun-rag-docs-*\ndocs/articles/{id}.json", "")
+    }
+
+    ' ── Security ───────────────────────────────────────────────────────────
+    rectangle "Security" as SecurityLayer #FFE0E0 {
+        SecretsManager(secretsMgr,
+            "Secrets Manager\ngemini/api_key\n{ \"key\": \"...\" }", "")
+    }
+
+    ' ── Observability ──────────────────────────────────────────────────────
+    rectangle "Observability" as ObsLayer #E8E8E8 {
+        CloudWatch(cwLogs, "CloudWatch Logs\nJSON-structured logs\nper Lambda function", "")
+    }
+
+    ' ── Email ──────────────────────────────────────────────────────────────
+    rectangle "Email" as EmailLayer #FFD0D0 {
+        SimpleEmailService(ses,
+            "AWS SES\nNewsletter · Appointment alerts\nSES contact list mgmt", "")
+    }
+}
+
+' ─────────────────────────────────────────────────────────────────────────────
+'  Actors → API Gateway
+' ─────────────────────────────────────────────────────────────────────────────
+Admin      --> restApi : "HTTPS /admin/*"
+Subscriber --> restApi : "HTTPS POST /public/subscribe"
+Visitor    --> restApi : "HTTPS GET /site/posts"
+
+' ─────────────────────────────────────────────────────────────────────────────
+'  API Gateway → Lambda
+' ─────────────────────────────────────────────────────────────────────────────
+restApi --> adminApi       : "/admin/* — Lambda proxy"
+restApi --> publicApi      : "/public/subscribe — Lambda proxy"
+restApi --> appointmentApi : "/public/appointment — Lambda proxy"
+restApi --> siteData       : "/site/posts — Lambda proxy"
+
+' ─────────────────────────────────────────────────────────────────────────────
+'  Admin API → downstream Lambdas
+' ─────────────────────────────────────────────────────────────────────────────
+adminApi --> generateDrafts : "lambda:InvokeFunction\n(async — generate action)"
+adminApi --> newsletterFn   : "lambda:InvokeFunction\n(sync — newsletter actions)"
+
+' ─────────────────────────────────────────────────────────────────────────────
+'  EventBridge → Lambda
+' ─────────────────────────────────────────────────────────────────────────────
+eb1 --> generateDrafts : "EventBridge trigger\nMon 15:15 UTC"
+eb2 --> newsletterFn   : "EventBridge trigger\nMon 00:00 UTC"
+
+' ─────────────────────────────────────────────────────────────────────────────
+'  Lambda → Storage
+' ─────────────────────────────────────────────────────────────────────────────
+adminApi       --> contentTable : "DynamoDBCrudPolicy\nArticles · Events · Subscribers"
+adminApi       --> articlesS3   : "s3:PutObject\ndocs/articles/{id}.json"
+publicApi      --> contentTable : "DynamoDBCrudPolicy\nSubscribers"
+generateDrafts --> contentTable : "DynamoDBCrudPolicy\nArticle + Events"
+newsletterFn   --> contentTable : "DynamoDBReadPolicy\nPublished articles + Subscribers"
+siteData       --> articlesS3   : "s3:ListBucket + s3:GetObject\ndocs/articles/*"
+
+' ─────────────────────────────────────────────────────────────────────────────
+'  Lambda → Secrets Manager
+' ─────────────────────────────────────────────────────────────────────────────
+generateDrafts --> secretsMgr : "secretsmanager:GetSecretValue\nGemini API key"
+newsletterFn   --> secretsMgr : "secretsmanager:GetSecretValue\nGemini API key"
+
+' ─────────────────────────────────────────────────────────────────────────────
+'  Lambda → SNS
+' ─────────────────────────────────────────────────────────────────────────────
+generateDrafts --> snsTopic : "sns:Publish\nApproval notification"
+snsTopic --> Admin         : "SNS email:\nDraft awaiting approval"
+
+' ─────────────────────────────────────────────────────────────────────────────
+'  Lambda → SES
+' ─────────────────────────────────────────────────────────────────────────────
+newsletterFn   --> ses : "ses:SendEmail\nWeekly newsletter to subscribers"
+publicApi      --> ses : "ses:CreateContact / UpdateContact\nSES contact list"
+appointmentApi --> ses : "ses:SendEmail\nAppointment notification"
+
+' ─────────────────────────────────────────────────────────────────────────────
+'  Lambda → External Systems
+' ─────────────────────────────────────────────────────────────────────────────
+generateDrafts --> stepFunctions  : "states:DescribeExecution\nPoll execution status"
+generateDrafts --> artifactBucket : "s3:GetObject + s3:ListBucket\nruns/{runId}/writer_linkedin.json"
+generateDrafts --> geminiApi      : "HTTPS POST generateContent\n(BAU fallback)"
+newsletterFn   --> geminiApi      : "HTTPS POST generateContent\n(newsletter)"
+geminiApi      --> googleSearch   : "Google Search\ngrounding"
+
+' ─────────────────────────────────────────────────────────────────────────────
+'  Lambda → CloudWatch
+' ─────────────────────────────────────────────────────────────────────────────
+adminApi       --> cwLogs : "JSON logs"
+generateDrafts --> cwLogs : "JSON logs"
+newsletterFn   --> cwLogs : "JSON logs"
+publicApi      --> cwLogs : "JSON logs"
+siteData       --> cwLogs : "JSON logs"
+
+' ─────────────────────────────────────────────────────────────────────────────
+'  Legend
+' ─────────────────────────────────────────────────────────────────────────────
+legend right
+  |= Color       |= Layer / Service Group      |
+  |<#FFE8CC>     | API Layer (API Gateway)      |
+  |<#CCF5CC>     | Compute (Lambda)             |
+  |<#CCE8FF>     | Scheduling (EventBridge)     |
+  |<#F5CCFF>     | Messaging (SNS)              |
+  |<#FFFFCC>     | Storage (DynamoDB + S3)      |
+  |<#FFE0E0>     | Security (Secrets Manager)   |
+  |<#FFD0D0>     | Email (SES)                  |
+  |<#E8E8E8>     | Observability (CloudWatch)   |
+  |<#F0F0FF>     | External Systems             |
+endlegend
+
+@enduml
