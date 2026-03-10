@@ -122,12 +122,26 @@ def createTeamTask(topic, objective):
     except Exception as e:
         raise RuntimeError("team_task_signing_failed") from e
 
+    log.info(
+        "team_task_request",
+        extra={"url": url, "signed_header_names": sorted(signed_headers.keys())},
+    )
+
     req = urllib.request.Request(url, data=body, headers=signed_headers, method="POST")
 
     try:
         with urllib.request.urlopen(req, timeout=20) as response:
             body = json.loads(response.read().decode("utf-8"))
     except urllib.error.HTTPError as e:
+        error_body = ""
+        try:
+            error_body = e.read().decode("utf-8", errors="replace")[:500]
+        except Exception:
+            pass
+        log.error(
+            "team_task_http_error",
+            extra={"status": getattr(e, "code", "NA"), "url": url, "error_body": error_body},
+        )
         raise RuntimeError(f"team_task_http_{getattr(e, 'code', 'NA')}") from e
     except Exception as e:
         raise RuntimeError("team_task_failed") from e
