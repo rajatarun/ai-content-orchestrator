@@ -5,6 +5,8 @@ import urllib.error
 import urllib.request
 
 import boto3
+from botocore.auth import SigV4Auth
+from botocore.awsrequest import AWSRequest
 
 from db import add_event, get_article, update_article
 from gemini_client import gemini_generate_json
@@ -79,6 +81,22 @@ def _normalize_drafts(payload: dict) -> list:
     return clean
 
 
+def _sign_request_headers(url: str, method: str, body: bytes, headers: dict) -> dict:
+    """Return a copy of headers with AWS SigV4 signature headers added."""
+    session = boto3.session.Session()
+    credentials = session.get_credentials()
+    if credentials is None:
+        raise RuntimeError("no_aws_credentials")
+    credentials = credentials.get_frozen_credentials()
+
+    region = session.region_name or os.environ.get("AWS_REGION") or os.environ.get("AWS_DEFAULT_REGION") or "us-east-1"
+
+    aws_request = AWSRequest(method=method, url=url, data=body, headers=headers)
+    SigV4Auth(credentials, "execute-api", region).add_auth(aws_request)
+
+    return dict(aws_request.headers)
+
+
 def createTeamTask(topic, objective):
     base_url = (os.environ.get("HTTP_API_URL") or "").rstrip("/")
     if not base_url:
@@ -95,12 +113,16 @@ def createTeamTask(topic, objective):
         },
     }
 
-    req = urllib.request.Request(
-        f"{base_url}/team/task",
-        data=json.dumps(payload).encode("utf-8"),
-        headers={"Content-Type": "application/json"},
-        method="POST",
-    )
+    url = f"{base_url}/team/task"
+    body = json.dumps(payload).encode("utf-8")
+    headers = {"Content-Type": "application/json"}
+
+    try:
+        signed_headers = _sign_request_headers(url, "POST", body, headers)
+    except Exception as e:
+        raise RuntimeError("team_task_signing_failed") from e
+
+    req = urllib.request.Request(url, data=body, headers=signed_headers, method="POST")
 
     try:
         with urllib.request.urlopen(req, timeout=20) as response:
