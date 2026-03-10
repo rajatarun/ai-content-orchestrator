@@ -1,0 +1,56 @@
+@startuml C4-L3-AdminApi
+
+' ─────────────────────────────────────────────────────────────────
+'  C4 Architecture — TaskWeave Content Orchestrator
+'  Level 3: Component Diagram — Admin API Lambda
+'
+'  C4-PlantUML library files are bundled locally in:
+'  docs/plantuml-libs/C4/
+'  Source: https://github.com/plantuml-stdlib/C4-PlantUML
+'
+'  Render from the docs/ directory:
+'    cd docs && plantuml c4-component-admin-api.puml
+' ─────────────────────────────────────────────────────────────────
+
+!define C4Puml plantuml-libs/C4
+!include C4Puml/C4_Component.puml
+
+LAYOUT_WITH_LEGEND()
+
+title [L3] Component Diagram — Admin API Lambda
+
+Container_Boundary(adminApiLambda, "AdminAPI Lambda") {
+
+    Component(handler, "lambda_handler", "Python function", "Routes incoming HTTP requests\nbased on path + method.")
+
+    Component(articleCrud, "Article CRUD handlers", "Python functions", "POST /admin/articles — create\nGET /admin/articles — list by status\nGET /admin/articles/{id} — get\nPATCH /admin/articles/{id} — update")
+
+    Component(actionHandlers, "Action Handlers", "Python functions", "generate → async Lambda invoke\napprove → update + S3 publish\nrequest-edits → REVISION_REQUESTED\nreject → FAILED\nsubmit-for-approval → AWAITING_APPROVAL\nmark-failed → FAILED\narchive → ARCHIVED\nmark-published → PUBLISHED")
+
+    Component(newsletterProxy, "Newsletter Proxy", "Python functions", "generate → sync invoke NewsletterFunction\nsend → sync invoke NewsletterFunction")
+
+    Component(subscriberHandlers, "Subscriber CRUD", "Python functions", "GET/POST/DELETE /admin/subscribers")
+
+    Component(ctaDecorator, "_decorate_article_with_actions", "Python function", "Appends available CTA list per status.\nSets ctaPresentation: dropdown/inline.")
+
+    Component(publisher, "publisher.py", "S3 publish module", "publish_article_to_s3()\nUploads article JSON to S3.")
+}
+
+System_Ext(dynamoDb, "AWS DynamoDB", "ContentTable")
+System_Ext(s3, "AWS S3", "Articles bucket docs/articles/")
+System_Ext(lambdaService, "AWS Lambda", "GenerateDraftsFunction\nNewsletterFunction")
+
+Rel(handler, articleCrud, "routes article requests")
+Rel(handler, actionHandlers, "routes /actions/* requests")
+Rel(handler, newsletterProxy, "routes /newsletter/actions/*")
+Rel(handler, subscriberHandlers, "routes /subscribers/*")
+Rel(articleCrud, ctaDecorator, "decorates response")
+Rel(actionHandlers, ctaDecorator, "decorates response")
+Rel(actionHandlers, publisher, "on approve action")
+Rel(actionHandlers, lambdaService, "invoke GenerateDraftsFunction (async)")
+Rel(newsletterProxy, lambdaService, "invoke NewsletterFunction (sync)")
+Rel(articleCrud, dynamoDb, "CRUD operations via db.py")
+Rel(subscriberHandlers, dynamoDb, "subscriber operations via db.py")
+Rel(publisher, s3, "PutObject")
+
+@enduml

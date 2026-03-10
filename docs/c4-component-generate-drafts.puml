@@ -1,0 +1,65 @@
+@startuml C4-L3-GenerateDrafts
+
+' ─────────────────────────────────────────────────────────────────
+'  C4 Architecture — TaskWeave Content Orchestrator
+'  Level 3: Component Diagram — Generate Drafts Lambda
+'
+'  C4-PlantUML library files are bundled locally in:
+'  docs/plantuml-libs/C4/
+'  Source: https://github.com/plantuml-stdlib/C4-PlantUML
+'
+'  Render from the docs/ directory:
+'    cd docs && plantuml c4-component-generate-drafts.puml
+' ─────────────────────────────────────────────────────────────────
+
+!define C4Puml plantuml-libs/C4
+!include C4Puml/C4_Component.puml
+
+LAYOUT_WITH_LEGEND()
+
+title [L3] Component Diagram — Generate Drafts Lambda
+
+Container_Boundary(generateDrafts, "GenerateDrafts Lambda") {
+
+    Component(handler, "generate_drafts_handler", "Python function", "Entry point.\nResolves article inputs, orchestrates generation,\npersists result.")
+
+    Component(inputResolver, "_resolve_generation_inputs", "Python function", "Reads articleId from event.\nFetches article from DynamoDB.\nExtracts topic and objective.")
+
+    Component(teamweaveClient, "createTeamTask + pollExecution", "Python functions", "Posts task to TeamWeave API (SigV4 signed).\nPolls Step Functions execution status.\nFetches writer artifact from S3.")
+
+    Component(bauGenerator, "fallbackToBAUGeneration", "Python function", "Builds structured Gemini prompt.\nCalls Gemini API directly.\nReturns normalized draft list.")
+
+    Component(persistor, "_persist_generation_result", "Python function", "Updates article status to AWAITING_APPROVAL.\nStores generated drafts in DynamoDB.\nAdds audit event.\nPublishes SNS notification.")
+
+    Component(notifier, "_notify_approval_requested", "Python function", "Publishes SNS message with article details\nto ApprovalNotificationTopic.")
+}
+
+Component_Ext(dbModule, "db.py", "DynamoDB operations module", "get_article, update_article, add_event")
+Component_Ext(geminiModule, "gemini_client.py", "Gemini API client module", "gemini_generate_json")
+Component_Ext(secretsModule, "aws_secrets.py", "Secrets Manager module", "get_secret_json")
+
+System_Ext(teamWeaveApi, "TeamWeave API", "POST /team/task")
+System_Ext(stepFunctions, "AWS Step Functions", "DescribeExecution")
+System_Ext(s3, "AWS S3 Artifact Bucket", "writer_linkedin.json")
+System_Ext(geminiApi, "Google Gemini API", "generateContent")
+System_Ext(dynamoDb, "AWS DynamoDB", "ContentTable")
+System_Ext(snsTopicExt, "AWS SNS", "ApprovalNotificationTopic")
+
+Rel(handler, inputResolver, "calls")
+Rel(handler, teamweaveClient, "calls (primary path)")
+Rel(handler, bauGenerator, "calls (fallback path)")
+Rel(handler, persistor, "calls")
+
+Rel(inputResolver, dbModule, "get_article()")
+Rel(teamweaveClient, teamWeaveApi, "POST /team/task (SigV4)")
+Rel(teamweaveClient, stepFunctions, "DescribeExecution polling")
+Rel(teamweaveClient, s3, "GetObject artifact")
+Rel(bauGenerator, geminiModule, "gemini_generate_json()")
+Rel(geminiModule, secretsModule, "get_secret_json()")
+Rel(geminiModule, geminiApi, "HTTPS POST")
+Rel(persistor, dbModule, "update_article(), add_event()")
+Rel(persistor, notifier, "calls")
+Rel(notifier, snsTopicExt, "sns.publish()")
+Rel(dbModule, dynamoDb, "DynamoDB SDK calls")
+
+@enduml

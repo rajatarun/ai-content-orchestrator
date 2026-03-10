@@ -1,0 +1,41 @@
+@startuml C4-L1-Context
+
+' ─────────────────────────────────────────────────────────────────
+'  C4 Architecture — TaskWeave Content Orchestrator
+'  Level 1: System Context
+'
+'  C4-PlantUML library files are bundled locally in:
+'  docs/plantuml-libs/C4/
+'  Source: https://github.com/plantuml-stdlib/C4-PlantUML
+'
+'  Render from the docs/ directory:
+'    cd docs && plantuml c4-context.puml
+' ─────────────────────────────────────────────────────────────────
+
+!define C4Puml plantuml-libs/C4
+!include C4Puml/C4_Context.puml
+
+LAYOUT_WITH_LEGEND()
+
+title [L1] System Context — TaskWeave Content Orchestrator
+
+Person(admin, "Content Admin", "Reviews, approves, and manages LinkedIn content drafts via admin API")
+Person(subscriber, "Newsletter Subscriber", "Receives weekly email newsletter of published content")
+Person(siteVisitor, "Site Visitor", "Reads published articles via public website")
+
+System(contentOrchestrator, "TaskWeave Content Orchestrator", "Automates LinkedIn content creation, approval workflow, and newsletter delivery")
+
+System_Ext(geminiApi, "Google Gemini API", "Generative AI for LinkedIn draft and newsletter content generation")
+System_Ext(teamWeaveApi, "TeamWeave Content Team API", "Orchestrates AI writer agents via Step Functions. Produces LinkedIn drafts.")
+System_Ext(sesService, "AWS SES", "Transactional and bulk email delivery service")
+System_Ext(googleSearch, "Google Search", "Web search grounding for Gemini-generated content")
+
+Rel(admin, contentOrchestrator, "Creates articles, triggers generation, approves drafts", "HTTPS/REST")
+Rel(subscriber, contentOrchestrator, "Subscribes to newsletter", "HTTPS/REST")
+Rel(siteVisitor, contentOrchestrator, "Reads published posts", "HTTPS/REST")
+Rel(contentOrchestrator, geminiApi, "Generates drafts and newsletter content", "HTTPS/JSON")
+Rel(contentOrchestrator, teamWeaveApi, "Requests AI-generated LinkedIn drafts", "HTTPS/SigV4")
+Rel(contentOrchestrator, sesService, "Sends newsletter and notification emails", "AWS SDK")
+Rel(geminiApi, googleSearch, "Grounds responses with live web data", "Internal")
+
+@enduml
