@@ -1,4 +1,5 @@
 @startuml C4-L3-AdminApi
+!pragma layout smetana
 
 ' ─────────────────────────────────────────────────────────────────
 '  C4 Architecture — TaskWeave Content Orchestrator

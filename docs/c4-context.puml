@@ -1,4 +1,5 @@
 @startuml C4-L1-Context
+!pragma layout smetana
 
 ' ─────────────────────────────────────────────────────────────────
 '  C4 Architecture — TaskWeave Content Orchestrator
