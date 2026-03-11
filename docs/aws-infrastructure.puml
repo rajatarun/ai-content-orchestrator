@@ -1,4 +1,5 @@
 @startuml AWS-Infrastructure-TaskWeave-Content-Orchestrator
+!pragma layout smetana
 
 ' ─────────────────────────────────────────────────────────────────────────────
 '  AWS Infrastructure Diagram — TaskWeave Content Orchestrator
@@ -97,22 +98,18 @@ rectangle "AWS Cloud — us-east-1" as AWSCloud #FFF8F0 {
 
     ' ── Messaging ──────────────────────────────────────────────────────────
     rectangle "Messaging" as MessagingLayer #F5CCFF {
-        SimpleNotificationService(snsTopic,
-            "ApprovalNotificationTopic\nContent Approval Notifications\nEmail subscription → reviewer", "")
+        SimpleNotificationService(snsTopic, "ApprovalNotificationTopic\nContent Approval Notifications\nEmail subscription → reviewer", "")
     }
 
     ' ── Storage ────────────────────────────────────────────────────────────
     rectangle "Storage" as StorageLayer #FFFFCC {
-        DynamoDB(contentTable,
-            "ContentTable  (PAY_PER_REQUEST)\npk (HASH) + sk (RANGE)\nGSI: StatusUpdatedIndex\nGSI: StatusPublishedIndex", "")
-        SimpleStorageService(articlesS3,
-            "S3 Articles Bucket\ntarun-rag-docs-*\ndocs/articles/{id}.json", "")
+        DynamoDB(contentTable, "ContentTable  (PAY_PER_REQUEST)\npk (HASH) + sk (RANGE)\nGSI: StatusUpdatedIndex\nGSI: StatusPublishedIndex", "")
+        SimpleStorageService(articlesS3, "S3 Articles Bucket\ntarun-rag-docs-*\ndocs/articles/{id}.json", "")
     }
 
     ' ── Security ───────────────────────────────────────────────────────────
     rectangle "Security" as SecurityLayer #FFE0E0 {
-        SecretsManager(secretsMgr,
-            "Secrets Manager\ngemini/api_key\n{ \"key\": \"...\" }", "")
+        SecretsManager(secretsMgr, "Secrets Manager\ngemini/api_key\n{ key: ... }", "")
     }
 
     ' ── Observability ──────────────────────────────────────────────────────
@@ -122,8 +119,7 @@ rectangle "AWS Cloud — us-east-1" as AWSCloud #FFF8F0 {
 
     ' ── Email ──────────────────────────────────────────────────────────────
     rectangle "Email" as EmailLayer #FFD0D0 {
-        SimpleEmailService(ses,
-            "AWS SES\nNewsletter · Appointment alerts\nSES contact list mgmt", "")
+        SimpleEmailService(ses, "AWS SES\nNewsletter · Appointment alerts\nSES contact list mgmt", "")
     }
 }
 
