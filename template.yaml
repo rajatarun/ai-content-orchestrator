@@ -28,6 +28,10 @@ Parameters:
     Type: String
     Default: rajatarun12@gmail.com
     Description: Email address that receives approval-required SNS notifications
+  TeamTaskJwtToken:
+    Type: String
+    NoEcho: true
+    Description: JWT secret token used to sign requests to the /team/task endpoint
 
 Globals:
   Function:
@@ -356,6 +360,7 @@ Resources:
           ARTIFACT_BUCKET: !Ref ArtifactBucket
           MAX_POLL_SECONDS: "90"
           APPROVAL_NOTIFICATION_TOPIC_ARN: !Ref ApprovalNotificationTopic
+          TEAM_TASK_JWT_TOKEN: !Ref TeamTaskJwtToken
       Policies:
         - AWSLambdaBasicExecutionRole
         - DynamoDBCrudPolicy:
