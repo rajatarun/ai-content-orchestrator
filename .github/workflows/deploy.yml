@@ -94,6 +94,8 @@ jobs:
           } >> "$GITHUB_ENV"
 
       - name: SAM deploy
+        env:
+          TEAM_TASK_JWT_TOKEN: ${{ secrets.TEAM_TASK_JWT_TOKEN }}
         run: |
           sam deploy \
             --template-file .aws-sam/build/template.yaml \
@@ -101,6 +103,6 @@ jobs:
             --region "${REGION}" \
             --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM \
             --resolve-s3 \
-            --parameter-overrides ${SAM_PARAMETER_OVERRIDES} \
+            --parameter-overrides ${SAM_PARAMETER_OVERRIDES} TeamTaskJwtToken="${TEAM_TASK_JWT_TOKEN}" \
             --no-confirm-changeset \
             --no-fail-on-empty-changeset
