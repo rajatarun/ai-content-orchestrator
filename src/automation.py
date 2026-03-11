@@ -1,3 +1,6 @@
+import base64
+import hashlib
+import hmac
 import json
 import os
 import time
@@ -97,6 +100,21 @@ def _sign_request_headers(url: str, method: str, body: bytes, headers: dict) -> 
     return dict(aws_request.headers)
 
 
+def _create_jwt(secret: str, payload: dict) -> str:
+    """Create a HS256-signed JWT from a secret and payload dict."""
+    header = base64.urlsafe_b64encode(
+        json.dumps({"alg": "HS256", "typ": "JWT"}, separators=(",", ":")).encode()
+    ).rstrip(b"=").decode()
+    body = base64.urlsafe_b64encode(
+        json.dumps(payload, separators=(",", ":")).encode()
+    ).rstrip(b"=").decode()
+    signing_input = f"{header}.{body}"
+    sig = base64.urlsafe_b64encode(
+        hmac.new(secret.encode(), signing_input.encode(), hashlib.sha256).digest()
+    ).rstrip(b"=").decode()
+    return f"{signing_input}.{sig}"
+
+
 def createTeamTask(topic, objective):
     base_url = (os.environ.get("HTTP_API_URL") or "").rstrip("/")
     if not base_url:
@@ -119,6 +137,11 @@ def createTeamTask(topic, objective):
         "Content-Type": "application/json",
         "x-api-key": "4TTffLxI7p7Whkgikvjd64oktvZod8uz5ajvi0S1",
     }
+
+    jwt_secret = os.environ.get("TEAM_TASK_JWT_TOKEN", "")
+    if jwt_secret:
+        token = _create_jwt(jwt_secret, {"feature": "agent"})
+        headers["Authorization"] = f"Bearer {token}"
 
     try:
         signed_headers = _sign_request_headers(url, "POST", body, headers)
