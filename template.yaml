@@ -144,6 +144,9 @@ Resources:
             RestApiId: !Ref RestApi
             Path: /site/posts
             Method: GET
+            Auth:
+              Authorizer: NONE
+              ApiKeyRequired: false
         SitePostsOptions:
           Type: Api
           Properties:
@@ -159,6 +162,9 @@ Resources:
             RestApiId: !Ref RestApi
             Path: /site/posts/{id}
             Method: GET
+            Auth:
+              Authorizer: NONE
+              ApiKeyRequired: false
         SitePostByIdOptions:
           Type: Api
           Properties:
