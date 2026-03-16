@@ -21,9 +21,6 @@ Parameters:
   HttpApiUrl:
     Type: String
     Description: HTTP API URL from tarun-content-team stack output HttpApiUrl
-  AuthorizerFunctionArn:
-    Type: String
-    Description: Lambda ARN from siwe-infra stack output autorizerfunctionarn
   ApprovalNotificationEmail:
     Type: String
     Default: rajatarun12@gmail.com
@@ -32,6 +29,11 @@ Parameters:
     Type: String
     NoEcho: true
     Description: JWT secret token used to sign requests to the /team/task endpoint
+  AuthorizerJwtSecret:
+    Type: String
+    NoEcho: true
+    Default: ""
+    Description: Bearer token secret used by the internal Lambda authorizer
 
 Globals:
   Function:
@@ -43,6 +45,24 @@ Globals:
         LOG_LEVEL: INFO
 
 Resources:
+  AuthorizerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: authorizer.lambda_handler
+      Environment:
+        Variables:
+          JWT_SECRET: !Ref AuthorizerJwtSecret
+      Policies:
+        - AWSLambdaBasicExecutionRole
+
+  AuthorizerFunctionPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !GetAtt AuthorizerFunction.Arn
+      Principal: apigateway.amazonaws.com
+
   AppointmentApiFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -252,7 +272,7 @@ Resources:
         AddDefaultAuthorizerToCorsPreflight: false
         Authorizers:
           SiweLambdaAuthorizer:
-            FunctionArn: !Ref AuthorizerFunctionArn
+            FunctionArn: !GetAtt AuthorizerFunction.Arn
             FunctionPayloadType: REQUEST
             Identity:
               Headers:
