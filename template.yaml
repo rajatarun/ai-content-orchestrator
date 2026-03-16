@@ -178,6 +178,28 @@ Resources:
             Auth:
               Authorizer: NONE
               ApiKeyRequired: false
+  AuthorizerWrapperFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: authorizer.lambda_handler
+      Environment:
+        Variables:
+          UPSTREAM_AUTHORIZER_ARN: !Ref AuthorizerFunctionArn
+      Policies:
+        - AWSLambdaBasicExecutionRole
+        - Statement:
+            Effect: Allow
+            Action: lambda:InvokeFunction
+            Resource: !Ref AuthorizerFunctionArn
+
+  AuthorizerWrapperInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !GetAtt AuthorizerWrapperFunction.Arn
+      Principal: apigateway.amazonaws.com
+
   ContentTable:
     Type: AWS::DynamoDB::Table
     Properties:
@@ -252,12 +274,11 @@ Resources:
         AddDefaultAuthorizerToCorsPreflight: false
         Authorizers:
           SiweLambdaAuthorizer:
-            FunctionArn: !Ref AuthorizerFunctionArn
+            FunctionArn: !GetAtt AuthorizerWrapperFunction.Arn
             FunctionPayloadType: REQUEST
             Identity:
               Headers:
                 - Authorization
-              ReauthorizeEveryNSeconds: 0
       Cors:
         AllowOrigin: "'*'"
         AllowMethods: "'GET,POST,PATCH,DELETE,OPTIONS'"
