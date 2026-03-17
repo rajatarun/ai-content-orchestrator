@@ -36,7 +36,7 @@ Parameters:
 Globals:
   Function:
     Runtime: python3.11
-    Timeout: 180
+    Timeout: 900
     MemorySize: 512
     Environment:
       Variables:
@@ -392,7 +392,7 @@ Resources:
           GEMINI_MODEL: !Ref GeminiModel
           HTTP_API_URL: !Ref HttpApiUrl
           ARTIFACT_BUCKET: !Ref ArtifactBucket
-          MAX_POLL_SECONDS: "90"
+          MAX_POLL_SECONDS: "880"
           APPROVAL_NOTIFICATION_TOPIC_ARN: !Ref ApprovalNotificationTopic
           TEAM_TASK_JWT_TOKEN: !Ref TeamTaskJwtToken
       Policies:
