@@ -111,6 +111,6 @@ jobs:
         run: |
           REPO_NAME="${{ github.event.repository.name }}"
           S3_PREFIX="s3://expertise-rag-artifacts-239571291755-prod/raw/${REPO_NAME}"
-          find . -type f \( -name "*.md" -o -name "*.puml" \) | while read -r file; do
+          find . -type f \( -name "*.md" -o -name "*.puml" \) -not -path "*/plantuml-libs/*" | while read -r file; do
             aws s3 cp "$file" "${S3_PREFIX}/${file#./}" --region "${REGION}"
           done
