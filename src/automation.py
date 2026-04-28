@@ -37,8 +37,8 @@ def _build_bau_prompt(topic: str, objective: str) -> dict:
     return {
         "task": "linkedin_drafts",
         "instructions": [
-            "Generate 3 distinct LinkedIn post drafts.",
-            "Keep each draft concise, practical, and useful for engineering leaders.",
+            "Generate LinkedIn post drafts in 200-300 words.",
+            "Keep draft concise, practical, and useful for engineering leaders.",
             "Return JSON only.",
         ],
         "context": {
