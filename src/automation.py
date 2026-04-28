@@ -310,7 +310,7 @@ def fetchWriterArtifact(runId):
 
 def fallbackToBAUGeneration(topic, objective):
     prompt = _build_bau_prompt(topic, objective)
-    result = gemini_generate_json(prompt, use_search=False)
+    result = gemini_generate_json(prompt, use_search=True)
     drafts = _normalize_drafts(result)
     if not drafts:
         raise RuntimeError("bau_empty_drafts")
