@@ -2,7 +2,7 @@ import os
 import json
 import boto3
 from decimal import Decimal
-from urllib.parse import parse_qs
+from urllib.parse import parse_qs, unquote
 
 from logger import get_logger
 from publisher import publish_article_to_s3
@@ -250,7 +250,7 @@ def lambda_handler(event, context):
         return _resp(event, 201, put_subscriber(email))
 
     if path.startswith("/admin/subscribers/") and method == "DELETE":
-        email = path.split("/admin/subscribers/", 1)[1]
+        email = unquote(path.split("/admin/subscribers/", 1)[1])
         delete_subscriber(email)
         return _resp(event, 200, {"ok": True})
 
