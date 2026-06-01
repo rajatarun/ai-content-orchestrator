@@ -29,7 +29,7 @@ def gemini_generate_json(payload: dict, use_search: bool = True) -> dict:
     if not api_key:
         raise RuntimeError("Missing Gemini API key in Secrets Manager (expected {'key':'...'}).")
 
-    model = _env("GEMINI_MODEL", "gemini-3-flash-preview")
+    model = _env("GEMINI_MODEL", "gemini-3.1-flash-lite-preview")
     url = GEMINI_ENDPOINT.format(model=model)
 
     system = "Return valid JSON only (no markdown). Include credible source URLs for factual claims."
