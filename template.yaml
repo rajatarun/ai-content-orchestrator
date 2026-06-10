@@ -257,6 +257,7 @@ Resources:
             Identity:
               Headers:
                 - Authorization
+              ReauthorizeEveryNSeconds: 0
       Cors:
         AllowOrigin: "'*'"
         AllowMethods: "'GET,POST,PATCH,DELETE,OPTIONS'"
