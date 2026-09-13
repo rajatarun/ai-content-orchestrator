@@ -277,7 +277,7 @@ Triggered when TeamWeave API fails or execution doesn't SUCCEED:
   │       { task, instructions, context: { topic, objective, channel, audience }, schema }
   │
   ├─ 2. POST to Gemini API
-  │       model: gemini-3-flash-preview (configurable)
+  │       model: gemini-3.8-flash (configurable)
   │       google_search tool: disabled for BAU
   │
   └─ 3. Parse JSON response → normalize drafts → persist

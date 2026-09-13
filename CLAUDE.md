@@ -70,7 +70,7 @@ SAM template parameters (set at deploy time or in CI secrets):
 | Parameter | Default | Description |
 |-----------|---------|-------------|
 | `GeminiApiKeySecretName` | `gemini/api_key` | Secrets Manager key for Gemini API |
-| `GeminiModel` | `gemini-3-flash-preview` | Gemini model to use |
+| `GeminiModel` | `gemini-3.8-flash` | Gemini model to use |
 | `SesFromEmail` | `rajatarun12@gmail.com` | Verified SES sender address |
 | `ArtifactBucket` | (shared stack) | S3 bucket for published articles |
 

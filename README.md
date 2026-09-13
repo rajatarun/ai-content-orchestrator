@@ -168,7 +168,7 @@ SAM template parameters (defined in [`template.yaml`](template.yaml)):
 | Parameter | Default | Description |
 |-----------|---------|-------------|
 | `GeminiApiKeySecretName` | `gemini/api_key` | Secrets Manager secret name for the Gemini API key |
-| `GeminiModel` | `gemini-3-flash-preview` | Gemini model identifier |
+| `GeminiModel` | `gemini-3.8-flash` | Gemini model identifier |
 | `SesFromEmail` | `rajatarun12@gmail.com` | Verified SES sender address |
 | `ArtifactBucket` | *(required)* | S3 bucket from `tarun-content-team` stack |
 | `StatusFunctionArn` | *(required)* | Lambda ARN from `tarun-content-team` stack |
