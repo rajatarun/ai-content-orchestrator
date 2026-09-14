@@ -93,6 +93,30 @@ jobs:
             echo "SAM_PARAMETER_OVERRIDES=ArtifactBucket=${ARTIFACT_BUCKET} StatusFunctionArn=${STATUS_FUNCTION_ARN} HttpApiUrl=${HTTP_API_URL} AuthorizerFunctionArn=${AUTHORIZER_FUNCTION_ARN}"
           } >> "$GITHUB_ENV"
 
+      # sam deploy wraps `aws cloudformation deploy`, which sends
+      # UsePreviousValue=true for every parameter NOT named in
+      # --parameter-overrides. So on an existing stack a parameter left out of
+      # that list keeps whatever value the stack was created with, and editing
+      # its Default: in template.yaml changes nothing that is deployed.
+      #
+      # GeminiModel was in exactly that state: the template default was updated
+      # to a current model, the deployed Lambdas kept serving the old model id,
+      # and the repository looked correct while the running admin API did not.
+      # It is now passed explicitly, read out of template.yaml so the template
+      # stays the single source of truth rather than the value being duplicated
+      # here and drifting (which is the failure this is fixing, one level up).
+      - name: Resolve GeminiModel from the template default
+        run: |
+          GEMINI_MODEL="$(awk '/^  GeminiModel:/{f=1;next} f&&/^    Default:/{print $2;exit} f&&/^  [A-Za-z]/{exit}' template.yaml)"
+          if [ -z "${GEMINI_MODEL}" ]; then
+            echo "Could not read the GeminiModel default from template.yaml." >&2
+            echo "If the Parameters block was reformatted, update this step -- do not" >&2
+            echo "drop it, or the stack silently keeps its previous model id." >&2
+            exit 1
+          fi
+          echo "GeminiModel resolved from template.yaml: ${GEMINI_MODEL}"
+          echo "GEMINI_MODEL_PARAM=${GEMINI_MODEL}" >> "$GITHUB_ENV"
+
       - name: SAM deploy
         env:
           TEAM_TASK_JWT_TOKEN: ${{ secrets.TEAM_TASK_JWT_TOKEN }}
@@ -103,7 +127,7 @@ jobs:
             --region "${REGION}" \
             --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM \
             --resolve-s3 \
-            --parameter-overrides ${SAM_PARAMETER_OVERRIDES} TeamTaskJwtToken="${TEAM_TASK_JWT_TOKEN}" \
+            --parameter-overrides ${SAM_PARAMETER_OVERRIDES} GeminiModel="${GEMINI_MODEL_PARAM}" TeamTaskJwtToken="${TEAM_TASK_JWT_TOKEN}" \
             --no-confirm-changeset \
             --no-fail-on-empty-changeset
 
