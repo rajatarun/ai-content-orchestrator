@@ -12,6 +12,19 @@ Parameters:
   SesFromEmail:
     Type: String
     Default: "rajatarun12@gmail.com"
+  ArticlesBucket:
+    Type: String
+    Default: tarun-rag-docs-239571291755-us-east-1
+    Description: >
+      S3 bucket holding the published article JSON that GET /site/posts reads.
+      Was hardcoded in two Lambda environment blocks and three IAM resource
+      ARNs, with the account id baked into the literal -- so nothing outside
+      this file could discover it and a second account could not deploy the
+      stack at all. The default preserves the deployed value exactly.
+  ArticlesPrefix:
+    Type: String
+    Default: docs/articles
+    Description: Key prefix under ArticlesBucket for published article JSON
   ArtifactBucket:
     Type: String
     Description: S3 bucket name from tarun-content-team stack output ArtifactBucket
@@ -120,8 +133,8 @@ Resources:
       Environment:
         Variables:
           ALLOWED_ORIGIN: "*"
-          ARTICLES_BUCKET: tarun-rag-docs-239571291755-us-east-1
-          ARTICLES_PREFIX: docs/articles
+          ARTICLES_BUCKET: !Ref ArticlesBucket
+          ARTICLES_PREFIX: !Ref ArticlesPrefix
       Policies:
         - AWSLambdaBasicExecutionRole
         - Statement:
@@ -129,7 +142,7 @@ Resources:
             Action:
               - s3:ListBucket
             Resource:
-              - arn:aws:s3:::tarun-rag-docs-239571291755-us-east-1
+              - !Sub "arn:aws:s3:::${ArticlesBucket}"
             Condition:
               StringLike:
                 s3:prefix:
@@ -139,7 +152,7 @@ Resources:
             Action:
               - s3:GetObject
             Resource:
-              - arn:aws:s3:::tarun-rag-docs-239571291755-us-east-1/docs/articles/*
+              - !Sub "arn:aws:s3:::${ArticlesBucket}/${ArticlesPrefix}/*"
 
       Events:
         SitePosts:
@@ -312,8 +325,8 @@ Resources:
           ALLOWED_ORIGIN: "*"
           GENERATE_FN_NAME: !Ref GenerateDraftsFunction
           NEWSLETTER_FN_NAME: !Ref NewsletterFunction
-          ARTICLES_BUCKET: tarun-rag-docs-239571291755-us-east-1
-          ARTICLES_PREFIX: docs/articles
+          ARTICLES_BUCKET: !Ref ArticlesBucket
+          ARTICLES_PREFIX: !Ref ArticlesPrefix
           CONFIG_BUCKET: !Ref ArtifactBucket
           STATUS_FUNCTION_ARN: !Ref StatusFunctionArn
           HTTP_API_URL: !Ref HttpApiUrl
@@ -332,7 +345,7 @@ Resources:
             Action:
               - s3:PutObject
             Resource:
-              - arn:aws:s3:::tarun-rag-docs-239571291755-us-east-1/docs/articles/*
+              - !Sub "arn:aws:s3:::${ArticlesBucket}/${ArticlesPrefix}/*"
       Events:
         AdminRoot:
           Type: Api
@@ -516,3 +529,48 @@ Outputs:
     Value: !Ref NewsletterFunction
   ApprovalNotificationTopicArn:
     Value: !Ref ApprovalNotificationTopic
+
+  # Everything below exists so that an automation harness can discover every
+  # coordinate it needs from `describe-stacks` alone. scripts/stack_env.py
+  # reads them; tests/test_openapi_contract.py asserts each one still exists.
+
+  ContentTableStatusUpdatedIndex:
+    Description: >
+      GSI name for querying articles by status, newest-updated first. A table
+      name on its own is not enough to query a table whose access pattern is an
+      index -- the caller has to name the index, and guessing it is how you get
+      a full scan instead.
+    Value: StatusUpdatedIndex
+
+  ContentTableStatusPublishedIndex:
+    Description: GSI name for querying articles by status, ordered by publishedAt
+    Value: StatusPublishedIndex
+
+  ArticlesBucketName:
+    Description: S3 bucket holding published article JSON (source for GET /site/posts)
+    Value: !Ref ArticlesBucket
+
+  ArticlesPrefix:
+    Description: Key prefix under ArticlesBucketName
+    Value: !Ref ArticlesPrefix
+
+  ArtifactBucketName:
+    Description: Shared artifact bucket passed in from the tarun-content-team stack
+    Value: !Ref ArtifactBucket
+
+  GeminiModelId:
+    Description: >
+      The Gemini model id this stack is actually deployed with. Published
+      because `sam deploy` sends UsePreviousValue=true for any parameter not
+      named in --parameter-overrides, so the deployed value can differ from the
+      template default with nothing in the repository showing it -- which is
+      exactly how the admin API ended up serving a stale model id. Reading this
+      output answers "what is running" without guessing.
+    Value: !Ref GeminiModel
+
+  OpenApiSpecPath:
+    Description: >
+      Repo-relative path to the OpenAPI description of this API. The spec's
+      `servers` block is templated on ApiBaseUrl above, so a harness resolves
+      the stack first and the spec second, rather than hardcoding a URL.
+    Value: openapi/content-orchestrator.yaml

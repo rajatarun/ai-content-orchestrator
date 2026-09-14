@@ -1,0 +1,4 @@
+# Test-only dependencies. Kept out of requirements.txt so nothing here is
+# packaged into a Lambda; src/requirements.txt is what ships.
+pytest
+PyYAML
