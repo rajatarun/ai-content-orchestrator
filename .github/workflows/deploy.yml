@@ -7,7 +7,10 @@ on:
 
 permissions:
   id-token: write
-  contents: read
+  # write, not read: the platform-manifest step below commits the refreshed
+  # manifest back to main after a successful deploy. Nothing else in this
+  # workflow writes repo contents.
+  contents: write
 
 env:
   REGION: ${{ vars.REGION || 'us-east-1' }}
@@ -75,6 +78,11 @@ jobs:
           STATUS_FUNCTION_ARN=$(echo "${TEAM_STACK_OUTPUTS}" | python -c "import json,sys; outputs={x['OutputKey']: x['OutputValue'] for x in json.load(sys.stdin)}; print(outputs.get('StatusFunctionArn',''))")
           HTTP_API_URL=$(echo "${TEAM_STACK_OUTPUTS}" | python -c "import json,sys; outputs={x['OutputKey']: x['OutputValue'] for x in json.load(sys.stdin)}; print(outputs.get('HttpApiUrl',''))")
           AUTHORIZER_FUNCTION_ARN=$(echo "${SIWE_STACK_OUTPUTS}" | python -c "import json,sys; outputs={x['OutputKey']: x['OutputValue'] for x in json.load(sys.stdin)}; print(outputs.get('AuthorizerFunctionArn', outputs.get('AutorizerFunctionArn','')))")
+          # Not required for this stack's own deploy (only AuthorizerFunctionArn
+          # is), so no fail-fast check below -- an empty value here just means
+          # the platform-manifest step later publishes AuthChain with a null
+          # apiBaseUrl instead of blocking the deploy over it.
+          SIWE_API_BASE_URL=$(echo "${SIWE_STACK_OUTPUTS}" | python -c "import json,sys; outputs={x['OutputKey']: x['OutputValue'] for x in json.load(sys.stdin)}; print(outputs.get('ApiBaseUrl',''))")
 
           if [ -z "${ARTIFACT_BUCKET}" ] || [ "${ARTIFACT_BUCKET}" = "None" ]; then
             echo "ArtifactBucket output was not found in ${TEAM_STACK_NAME}" >&2
@@ -101,6 +109,7 @@ jobs:
             echo "TEAM_STATUS_FUNCTION_ARN=${STATUS_FUNCTION_ARN}"
             echo "TEAM_HTTP_API_URL=${HTTP_API_URL}"
             echo "SIWE_AUTHORIZER_FUNCTION_ARN=${AUTHORIZER_FUNCTION_ARN}"
+            echo "SIWE_API_BASE_URL=${SIWE_API_BASE_URL}"
             echo "SAM_PARAMETER_OVERRIDES=ArtifactBucket=${ARTIFACT_BUCKET} StatusFunctionArn=${STATUS_FUNCTION_ARN} HttpApiUrl=${HTTP_API_URL} AuthorizerFunctionArn=${AUTHORIZER_FUNCTION_ARN}"
           } >> "$GITHUB_ENV"
 
@@ -149,3 +158,53 @@ jobs:
           find . -type f \( -name "*.md" -o -name "*.puml" \) -not -path "*/plantuml-libs/*" | while read -r file; do
             aws s3 cp "$file" "${S3_PREFIX}/${file#./}" --region "${REGION}"
           done
+
+      # This job already assumes the account-wide deploy role and already
+      # calls describe-stacks on stacks it doesn't own (TEAM_STACK_NAME,
+      # SIWE_STACK_NAME, above) to resolve this stack's own deploy
+      # parameters. build_platform_manifest.py reuses that same access to
+      # publish everyone's public API base URL in one place -- the
+      # resume repo's admin UI reads docs/platform-manifest.json from here
+      # over raw.githubusercontent.com rather than needing AWS credentials
+      # of its own.
+      #
+      # These three steps run only after a successful deploy (no `if:`, so
+      # the default "only if everything above passed" applies -- a manifest
+      # built from a deploy that just failed would be worse than no
+      # manifest). continue-on-error is set on each because the inverse
+      # must also hold: a lookup this job's role can't reach, or a git push
+      # race with another concurrent run, must degrade the manifest, not
+      # fail a deploy that already succeeded.
+      - name: Resolve this stack's own ApiBaseUrl
+        id: own_outputs
+        continue-on-error: true
+        run: |
+          OWN_API_BASE_URL=$(aws cloudformation describe-stacks \
+            --stack-name "${STACK_NAME}" \
+            --region "${REGION}" \
+            --query "Stacks[0].Outputs[?OutputKey=='ApiBaseUrl'].OutputValue | [0]" \
+            --output text)
+          echo "OWN_API_BASE_URL=${OWN_API_BASE_URL}" >> "$GITHUB_ENV"
+
+      - name: Build platform manifest
+        continue-on-error: true
+        run: |
+          python scripts/build_platform_manifest.py \
+            --own-api-base-url "${OWN_API_BASE_URL:-}" \
+            --team-api-base-url "${TEAM_HTTP_API_URL:-}" \
+            --siwe-api-base-url "${SIWE_API_BASE_URL:-}" \
+            --region "${REGION}" \
+            --out docs/platform-manifest.json
+
+      - name: Commit platform manifest if it changed
+        continue-on-error: true
+        run: |
+          if git diff --quiet -- docs/platform-manifest.json; then
+            echo "platform-manifest.json unchanged"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add docs/platform-manifest.json
+          git commit -m "chore: refresh platform manifest [skip ci]"
+          git push origin HEAD:main
