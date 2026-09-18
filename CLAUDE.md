@@ -109,6 +109,14 @@ Admin API actions: `generate`, `submit-for-approval`, `request-edits`, `approve`
 | Every Monday | 15:15 | `GenerateDraftsFunction` — AI draft generation |
 | Every Monday | 00:00 | `NewsletterFunction` — Send weekly newsletter |
 
+Upstream of the 15:15 run, RoutineWeave's `linkedin_topic_scout` task fires at
+13:00 UTC on Monday, picks one search-grounded topic and POSTs it to
+`POST /admin/articles`. `put_article` keeps `title` and `sourceInputs` and drops
+every other field, and `_resolve_generation_inputs` then reads them back as the
+topic and the objective — so `sourceInputs` is the entire brief the draft
+writer sees, and the dated sources have to be in it. The task definition lives
+in `rajatarun/RoutineWeave` at `tasks/linkedin_topic_scout.json`.
+
 ## DynamoDB Schema
 
 **Table:** `ContentTable` (pay-per-request)
@@ -192,5 +200,13 @@ model id.
 **Modify newsletter content:** Edit `src/newsletter.py` — the `newsletter_handler` function builds and sends the email.
 
 **Change draft generation prompts:** Edit `src/automation.py` — the `generate_drafts_handler` calls `src/gemini_client.py`.
+
+`_build_bau_prompt` states today's date and a `FRESHNESS_WINDOW_DAYS` recency
+rule, and `tests/test_draft_prompt.py` holds it to both. That is not decoration:
+`gemini_generate_json` passes `use_search=True` on every call, but a prompt that
+never mentions the date and never asks for recent evidence gives the model no
+reason to use the search tool. It answers from training data instead, and the
+drafts describe a world months old while nothing fails and nothing logs an
+error. Where the topic comes from is the other half — see below.
 
 **Add a new Lambda function:** Define it in `template.yaml` under `Resources`, then create the handler in `src/`.

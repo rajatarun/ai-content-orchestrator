@@ -33,17 +33,40 @@ def _env_int(name: str, default: int) -> int:
         return default
 
 
+# How old a supporting source may be before a claim counts as stale. The
+# generator runs weekly, so a month is already two or three cycles behind.
+FRESHNESS_WINDOW_DAYS = 30
+
+
 def _build_bau_prompt(topic: str, objective: str) -> dict:
+    # Gemini is called with google_search enabled (see gemini_generate_json),
+    # but a prompt that never mentions the date or asks for recent evidence
+    # gives it no reason to use the tool: it answers from training data, and
+    # the drafts read as though they were written months ago. The date and the
+    # freshness rule below are what turn the search tool on in practice.
+    today = time.strftime("%Y-%m-%d", time.gmtime())
     return {
         "task": "linkedin_drafts",
+        "today": today,
         "instructions": [
+            f"Today is {today}. Search for current information before writing; "
+            "do not rely on recollection for anything time-sensitive.",
             "Generate LinkedIn post drafts in 200-300 words.",
             "Keep draft concise, practical, and useful for engineering leaders.",
+            "Ground every factual claim in a source you found, and prefer sources "
+            f"published within the last {FRESHNESS_WINDOW_DAYS} days.",
+            "Drop any claim whose newest supporting source is older than "
+            f"{FRESHNESS_WINDOW_DAYS} days rather than presenting it as current.",
+            "Never write a relative date such as 'recently', 'last week' or "
+            "'this year'. Name the actual date or the version, so the post does "
+            "not silently age between drafting and publication.",
             "Return JSON only.",
         ],
         "context": {
             "topic": topic,
             "objective": objective,
+            "today": today,
+            "freshness_window_days": FRESHNESS_WINDOW_DAYS,
             "channel": "linkedin",
             "audience": "engineering leaders",
         },
@@ -54,6 +77,7 @@ def _build_bau_prompt(topic: str, objective: str) -> dict:
                     "linkedin_post": "string",
                     "hashtags": ["string"],
                     "cta_question": "string",
+                    "sources": ["string"],
                 }
             ]
         },
@@ -79,6 +103,11 @@ def _normalize_drafts(payload: dict) -> list:
                 "hashtags": draft.get("hashtags") if isinstance(draft.get("hashtags"), list) else [],
                 "char_count_estimate": draft.get("char_count_estimate") or len(post),
                 "cta_question": draft.get("cta_question", ""),
+                # Kept so the approver can see what the claims rest on. This
+                # normaliser drops any key it does not name, so a field absent
+                # here never reaches the article however faithfully the model
+                # returned it.
+                "sources": draft.get("sources") if isinstance(draft.get("sources"), list) else [],
             }
         )
     return clean
