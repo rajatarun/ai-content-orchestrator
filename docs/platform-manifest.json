@@ -1,6 +1,6 @@
 {
-  "generatedAt": "",
-  "generatedBy": "seed committed by hand; overwritten by .github/workflows/deploy.yml on the next deploy",
+  "generatedAt": "2026-09-18T23:20:30Z",
+  "generatedBy": "ai-content-orchestrator/.github/workflows/deploy.yml",
   "schemaVersion": 1,
   "products": [
     {
@@ -35,7 +35,7 @@
       "repo": "https://github.com/rajatarun/DeviceWeave",
       "category": "Execution / Tools",
       "description": "AI-native execution layer converting human intent into safe, real-time control of physical IoT environments.",
-      "apiBaseUrl": null,
+      "apiBaseUrl": "https://36ynsjsy2e.execute-api.us-east-1.amazonaws.com/prod",
       "openApiSpecUrl": "https://raw.githubusercontent.com/rajatarun/DeviceWeave/main/openapi/deviceweave.yaml",
       "status": "active"
     },
@@ -62,7 +62,7 @@
       "repo": "https://github.com/rajatarun/ContextWeave",
       "category": "Knowledge / RAG",
       "description": "AWS-native GraphRAG + CAG knowledge layer: Memgraph expertise graph, pgvector chunks, Neptune-backed adaptive routing.",
-      "apiBaseUrl": null,
+      "apiBaseUrl": "https://56u86rj4qk.execute-api.us-east-1.amazonaws.com/prod",
       "openApiSpecUrl": "https://raw.githubusercontent.com/rajatarun/ContextWeave/main/openapi/contextweave.yaml",
       "status": "active"
     },
@@ -89,7 +89,7 @@
       "repo": "https://github.com/rajatarun/TeamWeave",
       "category": "Orchestration",
       "description": "Config-driven multi-agent orchestration platform on AWS using Step Functions, Bedrock, and DynamoDB.",
-      "apiBaseUrl": null,
+      "apiBaseUrl": "https://sr6lu63px1.execute-api.us-east-1.amazonaws.com/prod",
       "openApiSpecUrl": "https://raw.githubusercontent.com/rajatarun/TeamWeave/main/openapi/teamweave.yaml",
       "status": "active"
     },
@@ -98,7 +98,7 @@
       "repo": "https://github.com/rajatarun/ai-content-orchestrator",
       "category": "Orchestration",
       "description": "AWS serverless pipeline: article lifecycle, AI LinkedIn drafts via Gemini, weekly newsletter via SES.",
-      "apiBaseUrl": null,
+      "apiBaseUrl": "https://6rt5hcwn16.execute-api.us-east-1.amazonaws.com/prod",
       "openApiSpecUrl": "https://raw.githubusercontent.com/rajatarun/ai-content-orchestrator/main/openapi/content-orchestrator.yaml",
       "status": "active"
     },
@@ -125,7 +125,7 @@
       "repo": "https://github.com/rajatarun/AuthChain",
       "category": "Security",
       "description": "Serverless Sign-In With Ethereum (SIWE) gateway issuing JWT sessions, with Bedrock-backed RAG document Q&A.",
-      "apiBaseUrl": null,
+      "apiBaseUrl": "https://v3v4yglveh.execute-api.us-east-1.amazonaws.com/prod",
       "openApiSpecUrl": null,
       "status": "active"
     },
