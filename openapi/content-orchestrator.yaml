@@ -396,6 +396,58 @@ paths:
                 properties:
                   ok: { type: boolean }
 
+  /admin/settings:
+    get:
+      tags: [admin]
+      operationId: getSiteSettings
+      summary: Site settings, with who last changed them
+      responses:
+        "200":
+          description: Every field present; null when never set
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SiteSettings"
+                  - type: object
+                    properties:
+                      updatedBy:
+                        type: string
+                        nullable: true
+                        description: The caller the SIWE authorizer reported on the last save
+    patch:
+      tags: [admin]
+      operationId: updateSiteSettings
+      summary: Change site settings (live on the website's next page load)
+      description: |
+        Merges the given fields into the single settings item. Only the fields
+        below are editable; any other key is a 400, so a misspelt field fails
+        loudly instead of saving nothing.
+
+        `homeVariant` is checked for shape only. The design names belong to the
+        website (`lib/featureFlags.ts` in rajatarun/resume), which falls back
+        to its default for a name it does not recognise.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              minProperties: 1
+              properties:
+                homeVariant:
+                  type: string
+                  pattern: "^[a-z][a-z0-9-]{0,31}$"
+                  example: terracotta
+      responses:
+        "200":
+          description: The settings after the change
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SiteSettings" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+
   /public/subscribe:
     post:
       tags: [public]
@@ -560,6 +612,28 @@ paths:
                   error: { type: string }
                   details: { type: string }
 
+  /site/settings:
+    get:
+      tags: [site]
+      operationId: getPublicSiteSettings
+      summary: What the website should show, read on every homepage load
+      description: |
+        Read from ContentTable (`pk=SETTINGS`, `sk=site`), not S3. Every field
+        is present and null until it has been set; the website treats null as
+        "use the default it was built with".
+      security: []
+      responses:
+        "200":
+          description: The public settings
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SiteSettings" }
+        "500":
+          description: The settings item could not be read
+          content:
+            application/json:
+              schema: { type: object, properties: { error: { type: string } } }
+
 components:
 
   securitySchemes:
@@ -610,6 +684,20 @@ components:
     ArticleStatus:
       type: string
       enum: [DRAFT, AWAITING_APPROVAL, APPROVED, PUBLISHED, REVISION_REQUESTED, ARCHIVED, FAILED]
+
+    SiteSettings:
+      type: object
+      required: [homeVariant, updatedAt]
+      properties:
+        homeVariant:
+          type: string
+          nullable: true
+          description: Homepage design name; null means the website's built-in default
+          example: terracotta
+        updatedAt:
+          type: string
+          nullable: true
+          description: ISO timestamp of the last change
 
     PublicError:
       type: object

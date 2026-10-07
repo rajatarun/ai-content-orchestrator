@@ -6,6 +6,7 @@ from urllib.parse import parse_qs
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from logger import get_logger
+from site_settings import public_view
 
 log = get_logger("site_data")
 s3 = boto3.client("s3")
@@ -131,6 +132,15 @@ def lambda_handler(event, context):
 
     if method != "GET":
         return _resp(event, 405, {"error": "Method not allowed"})
+
+    # GET /site/settings -> what the website's homepage should show (site_settings.py)
+    if path == "/site/settings":
+        from db import get_site_settings
+        try:
+            return _resp(event, 200, public_view(get_site_settings()))
+        except Exception as e:
+            log.exception("site_settings_read_failed")
+            return _resp(event, 500, {"error": "Failed to read settings", "details": str(e)})
 
     bucket = os.environ["ARTICLES_BUCKET"]
     prefix = os.environ.get("ARTICLES_PREFIX", "docs/articles").rstrip("/") + "/"

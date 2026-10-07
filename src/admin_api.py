@@ -8,8 +8,10 @@ from logger import get_logger
 from publisher import publish_article_to_s3
 from db import (
     put_article, get_article, update_article, list_by_status,
-    list_events, put_subscriber, list_subscribers, delete_subscriber, add_event
+    list_events, put_subscriber, list_subscribers, delete_subscriber, add_event,
+    get_site_settings, put_site_settings,
 )
+from site_settings import admin_view, caller_identity, validate_patch
 from statuses import (
     ALL_ARTICLE_STATUSES,
     APPROVED,
@@ -237,6 +239,20 @@ def lambda_handler(event, context):
         resp = lambda_client.invoke(FunctionName=fn, InvocationType="RequestResponse", Payload=json.dumps(payload).encode("utf-8"))
         data = json.loads(resp["Payload"].read().decode("utf-8"))
         return _resp(event, 200, data)
+
+    # Site settings -- read by the resume website at runtime (site_settings.py)
+    if path == "/admin/settings" and method == "GET":
+        return _resp(event, 200, admin_view(get_site_settings()))
+
+    if path == "/admin/settings" and method == "PATCH":
+        try:
+            body = _json(event)
+        except ValueError:
+            return _resp(event, 400, {"error": "body must be JSON"})
+        patch, error = validate_patch(body)
+        if error:
+            return _resp(event, 400, {"error": error})
+        return _resp(event, 200, admin_view(put_site_settings(patch, updated_by=caller_identity(event))))
 
     # Subscribers
     if path == "/admin/subscribers" and method == "GET":

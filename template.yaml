@@ -135,8 +135,12 @@ Resources:
           ALLOWED_ORIGIN: "*"
           ARTICLES_BUCKET: !Ref ArticlesBucket
           ARTICLES_PREFIX: !Ref ArticlesPrefix
+          TABLE_NAME: !Ref ContentTable
       Policies:
         - AWSLambdaBasicExecutionRole
+        # Read-only, for GET /site/settings. Writes go through the admin API.
+        - DynamoDBReadPolicy:
+            TableName: !Ref ContentTable
         - Statement:
             Effect: Allow
             Action:
@@ -187,6 +191,24 @@ Resources:
           Properties:
             RestApiId: !Ref RestApi
             Path: /site/posts/{id}
+            Method: OPTIONS
+            Auth:
+              Authorizer: NONE
+              ApiKeyRequired: false
+        SiteSettings:
+          Type: Api
+          Properties:
+            RestApiId: !Ref RestApi
+            Path: /site/settings
+            Method: GET
+            Auth:
+              Authorizer: NONE
+              ApiKeyRequired: false
+        SiteSettingsOptions:
+          Type: Api
+          Properties:
+            RestApiId: !Ref RestApi
+            Path: /site/settings
             Method: OPTIONS
             Auth:
               Authorizer: NONE

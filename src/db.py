@@ -134,3 +134,24 @@ def delete_subscriber(email: str):
     e = (email or "").strip().lower()
     log.info("delete_subscriber", extra={"email": e})
     _t().delete_item(Key={"pk":"SUBSCRIBER","sk":e})
+
+def get_site_settings() -> Dict[str, Any]:
+    """The single site-settings item (see site_settings.py), or {} if never saved."""
+    from site_settings import SETTINGS_KEY
+    resp = _t().get_item(Key=SETTINGS_KEY)
+    return resp.get("Item") or {}
+
+def put_site_settings(patch: dict, updated_by: Optional[str] = None) -> Dict[str, Any]:
+    """Merge validated fields into the site-settings item and return the result."""
+    from site_settings import SETTINGS_KEY
+    item = dict(get_site_settings())
+    item.update(SETTINGS_KEY)
+    item.update(patch)
+    item["entityType"] = "SETTINGS"
+    item["updatedAt"] = now_iso()
+    if updated_by:
+        item["updatedBy"] = updated_by
+    item = _strip_none_and_empty(item)
+    log.info("put_site_settings", extra={"fields": sorted(patch), "updatedBy": updated_by})
+    _t().put_item(Item=item)
+    return item
