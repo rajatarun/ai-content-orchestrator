@@ -21,7 +21,8 @@ AWS serverless application that automates a weekly content publishing pipeline:
 src/                  # Lambda function source code
   admin_api.py        # Article management endpoints
   public_api.py       # Newsletter subscribe endpoint
-  site_data.py        # Public articles API
+  site_data.py        # Public articles API + GET /site/settings
+  site_settings.py    # Site settings (homepage design) validation + views
   appointment_api.py  # Appointment booking
   automation.py       # Weekly draft generation logic
   newsletter.py       # Newsletter generation + SES delivery
@@ -127,6 +128,7 @@ in `rajatarun/RoutineWeave` at `tasks/linkedin_topic_scout.json`.
 | Article | `"ARTICLE"` | article UUID |
 | Event | `"EVENT#{articleId}"` | ISO timestamp |
 | Subscriber | `"SUBSCRIBER"` | email address |
+| Site settings | `"SETTINGS"` | `"site"` (one item; see `src/site_settings.py`) |
 
 **GSIs:**
 - `StatusUpdatedIndex`: `status` → `updatedAt`
@@ -153,6 +155,7 @@ bearer JWT:
 | POST | `/admin/newsletter/actions/send` | Build and send via SES — no dry run |
 | GET/POST | `/admin/subscribers` | List / add |
 | DELETE | `/admin/subscribers/{email}` | Remove (idempotent) |
+| GET/PATCH | `/admin/settings` | Read / change site settings (e.g. `homeVariant`, the website's homepage design) |
 
 **Public** (`public_api`, `appointment_api`, `site_data`) — no credentials:
 
@@ -162,6 +165,7 @@ bearer JWT:
 | POST | `/public/appointment` | Appointment request |
 | GET | `/site/posts` | Published article cards, read from S3 |
 | GET | `/site/posts/{id}` | One article as stored in S3 (a snapshot, not the live item) |
+| GET | `/site/settings` | Site settings the website reads on every homepage load |
 
 Status transitions go through the actions endpoint, not PATCH: PATCHing
 `status` directly skips the S3 publish and the event-log write that `approve`
@@ -210,3 +214,11 @@ drafts describe a world months old while nothing fails and nothing logs an
 error. Where the topic comes from is the other half — see below.
 
 **Add a new Lambda function:** Define it in `template.yaml` under `Resources`, then create the handler in `src/`.
+
+**Site settings (the website's homepage design):** `PATCH /admin/settings` with
+`{"homeVariant": "<design>"}` is live on rajatarun/resume's next page load, no
+rebuild. Design names are owned by the website (`lib/featureFlags.ts` there);
+this API checks only their shape, and the site falls back to its default for a
+name it does not know. To make another field editable, add it to
+`EDITABLE_FIELDS` (and `PUBLIC_FIELDS` if the website should read it) in
+`src/site_settings.py`; `tests/test_site_settings.py` covers the round trip.
