@@ -45,6 +45,14 @@ Parameters:
     Type: String
     NoEcho: true
     Description: JWT secret token used to sign requests to the /team/task endpoint
+  SiteRebuildHookUrl:
+    Type: String
+    NoEcho: true
+    Default: ""
+    Description: >-
+      Optional Amplify incoming-webhook URL for the resume website. Saving the
+      travel journal POSTs to it so /traveller rebuilds with the change; empty
+      means the change shows on the site's next deploy.
 
 Globals:
   Function:
@@ -213,6 +221,25 @@ Resources:
             Auth:
               Authorizer: NONE
               ApiKeyRequired: false
+        # The travel journal without dates (travel_journal.py); the website builds /traveller from it.
+        SiteTravel:
+          Type: Api
+          Properties:
+            RestApiId: !Ref RestApi
+            Path: /site/travel
+            Method: GET
+            Auth:
+              Authorizer: NONE
+              ApiKeyRequired: false
+        SiteTravelOptions:
+          Type: Api
+          Properties:
+            RestApiId: !Ref RestApi
+            Path: /site/travel
+            Method: OPTIONS
+            Auth:
+              Authorizer: NONE
+              ApiKeyRequired: false
   ContentTable:
     Type: AWS::DynamoDB::Table
     Properties:
@@ -352,6 +379,7 @@ Resources:
           CONFIG_BUCKET: !Ref ArtifactBucket
           STATUS_FUNCTION_ARN: !Ref StatusFunctionArn
           HTTP_API_URL: !Ref HttpApiUrl
+          SITE_REBUILD_HOOK_URL: !Ref SiteRebuildHookUrl
       Policies:
         - AWSLambdaBasicExecutionRole
         - DynamoDBCrudPolicy:

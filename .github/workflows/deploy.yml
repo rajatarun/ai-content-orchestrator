@@ -140,6 +140,9 @@ jobs:
       - name: SAM deploy
         env:
           TEAM_TASK_JWT_TOKEN: ${{ secrets.TEAM_TASK_JWT_TOKEN }}
+          # Optional: the resume site's Amplify incoming webhook, so saving the
+          # travel journal rebuilds /traveller. Empty when the secret is unset.
+          SITE_REBUILD_HOOK_URL: ${{ secrets.SITE_REBUILD_HOOK_URL }}
         run: |
           sam deploy \
             --template-file .aws-sam/build/template.yaml \
@@ -147,7 +150,7 @@ jobs:
             --region "${REGION}" \
             --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM \
             --resolve-s3 \
-            --parameter-overrides ${SAM_PARAMETER_OVERRIDES} GeminiModel="${GEMINI_MODEL_PARAM}" TeamTaskJwtToken="${TEAM_TASK_JWT_TOKEN}" \
+            --parameter-overrides ${SAM_PARAMETER_OVERRIDES} GeminiModel="${GEMINI_MODEL_PARAM}" TeamTaskJwtToken="${TEAM_TASK_JWT_TOKEN}" SiteRebuildHookUrl="${SITE_REBUILD_HOOK_URL}" \
             --no-confirm-changeset \
             --no-fail-on-empty-changeset
 

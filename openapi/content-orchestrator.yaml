@@ -396,6 +396,184 @@ paths:
                 properties:
                   ok: { type: boolean }
 
+  /admin/travel:
+    get:
+      tags: [admin]
+      operationId: getTravelJournal
+      summary: The whole travel journal, dates included (admin only)
+      description: |
+        Every stored trip, oldest first, exactly as validated on upload.
+        The public `/site/travel` is the same journal with every date removed.
+      responses:
+        "200":
+          description: Every trip
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [trips, count]
+                properties:
+                  trips:
+                    type: array
+                    items: { $ref: "#/components/schemas/TravelTrip" }
+                  count: { type: integer }
+    post:
+      tags: [admin]
+      operationId: saveTravelTrips
+      summary: Add trips, or replace ones with the same id
+      description: |
+        Takes the Ask Photos journal as it comes: `{"years": [{"year", "trips"}]}`,
+        `{"year", "trips"}` or `{"trips"}`. Nothing is stored unless the whole
+        upload is valid; the error names the field (`years.0.trips.3.startDate`).
+        Instagram links that are not post or reel URLs are dropped, not refused.
+        When `SiteRebuildHookUrl` is set, the website is asked to rebuild.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object }
+      responses:
+        "200":
+          description: Saved
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [saved, total, rebuild]
+                properties:
+                  saved: { type: integer, description: Trips in this upload }
+                  total: { type: integer, description: Trips stored now }
+                  rebuild:
+                    type: string
+                    description: "`triggered`, `not-configured`, or `failed…` (never fails the save)"
+        "400": { $ref: "#/components/responses/BadRequest" }
+
+  /admin/travel/{tripId}:
+    delete:
+      tags: [admin]
+      operationId: deleteTravelTrip
+      summary: Remove one trip (idempotent)
+      parameters:
+        - name: tripId
+          in: path
+          required: true
+          schema: { type: string, pattern: "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$" }
+      responses:
+        "200":
+          description: Removed, or was not there
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  deleted: { type: string }
+                  rebuild: { type: string }
+        "400": { $ref: "#/components/responses/BadRequest" }
+
+  /admin/dining:
+    get:
+      tags: [admin]
+      operationId: getDining
+      summary: The café and restaurant list, with what was left out and why (admin only)
+      responses:
+        "200":
+          description: The stored upload, curated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DiningAdminView" }
+    post:
+      tags: [admin]
+      operationId: saveDining
+      summary: Replace the café and restaurant list
+      description: |
+        Takes the card-transaction export as it comes: `{"places": [{"name",
+        "category", "city", "region", "visits"}]}` or a bare list. Fast food
+        (labelled, or a known chain), the home area, delivery apps, card offers, workplace
+        cafeterias, generic names and unreadable card codes are left out, and
+        two spellings of one place are merged; the response says which and why.
+        The website gets the kept list without `visits`, inside `/site/travel`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object }
+      responses:
+        "200":
+          description: Saved
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/DiningAdminView"
+                  - type: object
+                    properties:
+                      rebuild: { type: string }
+        "400": { $ref: "#/components/responses/BadRequest" }
+
+  /admin/dining/reviews:
+    post:
+      tags: [admin]
+      operationId: saveDiningReviews
+      summary: Replace the café and restaurant reviews
+      description: |
+        Either the reviews as written, `{"text": "..."}`: optional section
+        headings, then `Name — 4★` and a paragraph for each; or
+        `{"reviews": [{"name", "rating", "review", "section"}]}`. A review
+        lands on the place it names (by the merge rules, or a shared
+        distinctive first word); one naming no place adds a place. Reviews
+        never lift a place past the filters: a reviewed fast-food or home-area
+        place stays off the public page, and `reviews` in the response says
+        which and why.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object }
+      responses:
+        "200":
+          description: Saved
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/DiningAdminView"
+                  - type: object
+                    properties:
+                      rebuild: { type: string }
+        "400": { $ref: "#/components/responses/BadRequest" }
+
+  /admin/dining/notes:
+    post:
+      tags: [admin]
+      operationId: saveDiningNotes
+      summary: Replace the café and restaurant notes
+      description: |
+        A one-line description and a public score per place, with its city.
+        Either as listed, `{"text": "..."}`: section headings, then
+        `* Name (address) – 4.5/5. What it is.` (only the city and state are
+        kept from the address); or `{"notes": [{"name", "city", "region",
+        "score", "note"}]}`. A note lands on the place it names (by spelling
+        only) or adds one, and fills in a city the card export left blank.
+        "DFW area", or a cityless place in a section headed local to DFW, is
+        home area. Notes never lift a place past the filters.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object }
+      responses:
+        "200":
+          description: Saved
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/DiningAdminView"
+                  - type: object
+                    properties:
+                      rebuild: { type: string }
+        "400": { $ref: "#/components/responses/BadRequest" }
+
   /admin/settings:
     get:
       tags: [admin]
@@ -634,6 +812,39 @@ paths:
             application/json:
               schema: { type: object, properties: { error: { type: string } } }
 
+  /site/travel:
+    get:
+      tags: [site]
+      operationId: getPublicTravelJournal
+      summary: The travel journal with every date removed
+      description: |
+        What the website's /traveller is built from. No `startDate`/`endDate`,
+        no photo timestamps, no trip ids (Ask Photos writes them as dates), no
+        years or month names left in the text, and ordered by country and title rather than
+        by when. `key` is an opaque, stable handle for each trip. `dining` is
+        the curated café and restaurant list, without visit counts.
+      security: []
+      responses:
+        "200":
+          description: The public journal; empty until something is uploaded
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [trips, dining]
+                properties:
+                  trips:
+                    type: array
+                    items: { $ref: "#/components/schemas/PublicTravelTrip" }
+                  dining:
+                    type: array
+                    items: { $ref: "#/components/schemas/DiningPlace" }
+        "500":
+          description: The journal could not be read
+          content:
+            application/json:
+              schema: { type: object, properties: { error: { type: string } } }
+
 components:
 
   securitySchemes:
@@ -680,6 +891,97 @@ components:
           schema: { $ref: "#/components/schemas/PublicError" }
 
   schemas:
+    DiningPlace:
+      type: object
+      required: [name, category]
+      properties:
+        name: { type: string }
+        category: { type: string, enum: [cafe, restaurant, other dining] }
+        city: { type: string, nullable: true }
+        region: { type: string, nullable: true }
+        rating: { type: integer, minimum: 1, maximum: 5, nullable: true }
+        review: { type: string, nullable: true, description: "Tarun's own review, when he wrote one" }
+        note: { type: string, nullable: true, description: A one-line description of the place }
+        score: { type: number, nullable: true, description: "A public score out of 5 (not Tarun's rating)" }
+    DiningAdminView:
+      type: object
+      properties:
+        uploaded: { type: integer }
+        kept:
+          type: array
+          items:
+            allOf:
+              - $ref: "#/components/schemas/DiningPlace"
+              - type: object
+                properties:
+                  visits: { type: integer }
+                  alsoListedAs: { type: array, items: { type: string } }
+        excluded:
+          type: array
+          items:
+            type: object
+            properties:
+              name: { type: string }
+              reason: { type: string }
+        reviews:
+          type: array
+          items:
+            type: object
+            properties:
+              name: { type: string }
+              rating: { type: integer }
+              matched: { type: array, items: { type: string } }
+              public: { type: boolean }
+              hiddenBecause: { type: array, items: { type: string } }
+        notes:
+          type: array
+          items:
+            type: object
+            properties:
+              name: { type: string }
+              matched: { type: array, items: { type: string } }
+              public: { type: boolean }
+              hiddenBecause: { type: array, items: { type: string } }
+        updatedAt: { type: string, nullable: true }
+    TravelPlace:
+      type: object
+      properties:
+        city: { type: string, nullable: true }
+        region: { type: string, nullable: true }
+        countryCode: { type: string, nullable: true, pattern: "^[A-Z]{2}$" }
+        lat: { type: number, nullable: true }
+        lng: { type: number, nullable: true }
+    TravelTrip:
+      type: object
+      required: [id]
+      properties:
+        id: { type: string }
+        title: { type: string, nullable: true }
+        startDate: { type: string, format: date, nullable: true }
+        endDate: { type: string, format: date, nullable: true }
+        tripType: { type: string, nullable: true }
+        summary: { type: string, nullable: true }
+        highlights: { type: array, items: { type: string } }
+        places: { type: array, items: { $ref: "#/components/schemas/TravelPlace" } }
+        photos: { type: array, items: { type: object } }
+    PublicTravelTrip:
+      type: object
+      required: [key, places, posts]
+      properties:
+        key: { type: string }
+        title: { type: string, nullable: true }
+        tripType: { type: string, nullable: true }
+        summary: { type: string, nullable: true }
+        highlights: { type: array, items: { type: string } }
+        places: { type: array, items: { $ref: "#/components/schemas/TravelPlace" } }
+        posts:
+          type: array
+          items:
+            type: object
+            properties:
+              url: { type: string }
+              description: { type: string, nullable: true }
+              isCover: { type: boolean }
 
     ArticleStatus:
       type: string

@@ -133,6 +133,20 @@ def lambda_handler(event, context):
     if method != "GET":
         return _resp(event, 405, {"error": "Method not allowed"})
 
+    # GET /site/travel -> the travel journal with every date removed (travel_journal.py),
+    # and the cafés and restaurants without visit counts (dining.py)
+    if path == "/site/travel":
+        from db import get_dining, get_dining_notes, get_dining_reviews, list_travel_trips
+        from dining import public_dining
+        from travel_journal import public_view as travel_public_view
+        try:
+            body = travel_public_view(list_travel_trips())
+            body["dining"] = public_dining(get_dining()["entries"], get_dining_reviews(), get_dining_notes())
+            return _resp(event, 200, body)
+        except Exception as e:
+            log.exception("travel_read_failed")
+            return _resp(event, 500, {"error": "Failed to read the travel journal", "details": str(e)})
+
     # GET /site/settings -> what the website's homepage should show (site_settings.py)
     if path == "/site/settings":
         from db import get_site_settings

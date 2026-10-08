@@ -155,3 +155,94 @@ def put_site_settings(patch: dict, updated_by: Optional[str] = None) -> Dict[str
     log.info("put_site_settings", extra={"fields": sorted(patch), "updatedBy": updated_by})
     _t().put_item(Item=item)
     return item
+
+def list_travel_trips() -> List[Dict[str, Any]]:
+    """Every trip in the travel journal (see travel_journal.py), as stored."""
+    import json
+    from travel_journal import TRAVEL_PK
+    items, kwargs = [], {"KeyConditionExpression": Key("pk").eq(TRAVEL_PK)}
+    while True:
+        resp = _t().query(**kwargs)
+        items += resp.get("Items", [])
+        if "LastEvaluatedKey" not in resp:
+            break
+        kwargs["ExclusiveStartKey"] = resp["LastEvaluatedKey"]
+    return [json.loads(item["data"]) for item in items if item.get("data")]
+
+def put_travel_trips(trips: List[Dict[str, Any]], updated_by: Optional[str] = None) -> int:
+    """Store validated trips, replacing any with the same id. Returns how many."""
+    import json
+    from travel_journal import TRAVEL_PK
+    now = now_iso()
+    with _t().batch_writer() as batch:
+        for trip in trips:
+            item = {
+                "pk": TRAVEL_PK,
+                "sk": trip["id"],
+                "entityType": "TRAVEL_TRIP",
+                "data": json.dumps(trip, ensure_ascii=False),
+                "updatedAt": now,
+                "updatedBy": updated_by,
+            }
+            batch.put_item(Item=_strip_none_and_empty(item))
+    log.info("put_travel_trips", extra={"count": len(trips), "updatedBy": updated_by})
+    return len(trips)
+
+def delete_travel_trip(trip_id: str) -> None:
+    from travel_journal import TRAVEL_PK
+    log.info("delete_travel_trip", extra={"tripId": trip_id})
+    _t().delete_item(Key={"pk": TRAVEL_PK, "sk": trip_id})
+
+def get_dining() -> Dict[str, Any]:
+    """The stored café and restaurant list (see dining.py): {entries, updatedAt}."""
+    import json
+    from dining import DINING_KEY
+    item = _t().get_item(Key=DINING_KEY).get("Item") or {}
+    return {"entries": json.loads(item["data"]) if item.get("data") else [], "updatedAt": item.get("updatedAt")}
+
+def put_dining(entries: List[Dict[str, Any]], updated_by: Optional[str] = None) -> str:
+    """Replace the café and restaurant list with a validated upload. Returns updatedAt."""
+    import json
+    from dining import DINING_KEY
+    now = now_iso()
+    item = {**DINING_KEY, "entityType": "DINING", "data": json.dumps(entries, ensure_ascii=False),
+            "updatedAt": now, "updatedBy": updated_by}
+    _t().put_item(Item=_strip_none_and_empty(item))
+    log.info("put_dining", extra={"count": len(entries), "updatedBy": updated_by})
+    return now
+
+def get_dining_reviews() -> List[Dict[str, Any]]:
+    """The stored café and restaurant reviews (see dining.py), [] if none."""
+    import json
+    from dining import REVIEWS_KEY
+    item = _t().get_item(Key=REVIEWS_KEY).get("Item") or {}
+    return json.loads(item["data"]) if item.get("data") else []
+
+def put_dining_reviews(reviews: List[Dict[str, Any]], updated_by: Optional[str] = None) -> str:
+    """Replace the reviews with a validated set. Returns updatedAt."""
+    import json
+    from dining import REVIEWS_KEY
+    now = now_iso()
+    item = {**REVIEWS_KEY, "entityType": "DINING_REVIEWS", "data": json.dumps(reviews, ensure_ascii=False),
+            "updatedAt": now, "updatedBy": updated_by}
+    _t().put_item(Item=_strip_none_and_empty(item))
+    log.info("put_dining_reviews", extra={"count": len(reviews), "updatedBy": updated_by})
+    return now
+
+def get_dining_notes() -> List[Dict[str, Any]]:
+    """The stored café and restaurant notes (see dining.py), [] if none."""
+    import json
+    from dining import NOTES_KEY
+    item = _t().get_item(Key=NOTES_KEY).get("Item") or {}
+    return json.loads(item["data"]) if item.get("data") else []
+
+def put_dining_notes(notes: List[Dict[str, Any]], updated_by: Optional[str] = None) -> str:
+    """Replace the notes with a validated set. Returns updatedAt."""
+    import json
+    from dining import NOTES_KEY
+    now = now_iso()
+    item = {**NOTES_KEY, "entityType": "DINING_NOTES", "data": json.dumps(notes, ensure_ascii=False),
+            "updatedAt": now, "updatedBy": updated_by}
+    _t().put_item(Item=_strip_none_and_empty(item))
+    log.info("put_dining_notes", extra={"count": len(notes), "updatedBy": updated_by})
+    return now
