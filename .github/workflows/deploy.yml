@@ -144,13 +144,20 @@ jobs:
           # travel journal rebuilds /traveller. Empty when the secret is unset.
           SITE_REBUILD_HOOK_URL: ${{ secrets.SITE_REBUILD_HOOK_URL }}
         run: |
+          # sam rejects `Key=` with an empty value, so the optional hook is
+          # passed only when the secret is set. Left out, the stack keeps its
+          # previous value (or the template default, "": no rebuilds).
+          optional_overrides=()
+          if [ -n "${SITE_REBUILD_HOOK_URL}" ]; then
+            optional_overrides+=("SiteRebuildHookUrl=${SITE_REBUILD_HOOK_URL}")
+          fi
           sam deploy \
             --template-file .aws-sam/build/template.yaml \
             --stack-name "${STACK_NAME}" \
             --region "${REGION}" \
             --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM \
             --resolve-s3 \
-            --parameter-overrides ${SAM_PARAMETER_OVERRIDES} GeminiModel="${GEMINI_MODEL_PARAM}" TeamTaskJwtToken="${TEAM_TASK_JWT_TOKEN}" SiteRebuildHookUrl="${SITE_REBUILD_HOOK_URL}" \
+            --parameter-overrides ${SAM_PARAMETER_OVERRIDES} GeminiModel="${GEMINI_MODEL_PARAM}" TeamTaskJwtToken="${TEAM_TASK_JWT_TOKEN}" "${optional_overrides[@]}" \
             --no-confirm-changeset \
             --no-fail-on-empty-changeset
 
