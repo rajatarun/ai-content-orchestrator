@@ -131,6 +131,7 @@ in `rajatarun/RoutineWeave` at `tasks/linkedin_topic_scout.json`.
 | Site settings | `"SETTINGS"` | `"site"` (one item; see `src/site_settings.py`) |
 | Travel trip | `"TRAVEL"` | trip id (the trip as JSON in `data`; see `src/travel_journal.py`) |
 | Cafés & restaurants | `"DINING"` | `"list"` (one item, the last upload as JSON in `data`; see `src/dining.py`) |
+| Café & restaurant reviews | `"DINING"` | `"reviews"` (one item, the last reviews upload as JSON in `data`) |
 
 **GSIs:**
 - `StatusUpdatedIndex`: `status` → `updatedAt`
@@ -161,6 +162,7 @@ bearer JWT:
 | GET/POST | `/admin/travel` | The full travel journal, dates included / add or replace trips (Ask Photos JSON as-is) |
 | DELETE | `/admin/travel/{tripId}` | Remove one trip (idempotent) |
 | GET/POST | `/admin/dining` | The café/restaurant list with what was left out and why / replace it (card export as-is) |
+| POST | `/admin/dining/reviews` | Replace the reviews (the text as written: `Name — 4★` + a paragraph) |
 
 **Public** (`public_api`, `appointment_api`, `site_data`) — no credentials:
 
@@ -238,7 +240,10 @@ anywhere in the home area (`HOME_AREA_TOWNS`), delivery apps, card offers,
 workplace cafeterias, generic names and card codes, and merges two spellings of
 one place; `GET /admin/dining` says what went and why. The public copy (in
 `/site/travel`) never has `visits`: frequency says where someone lives and works.
-`tests/test_dining.py` holds both.
+Reviews (`POST /admin/dining/reviews`, stored apart so a new card export keeps
+them) attach to the place they name, or add one, and add `rating` and `review`
+to it; they never lift a place past the filters, and a review naming a
+home-area town counts as home area. `tests/test_dining.py` holds all of it.
 
 **Site settings (the website's homepage design):** `PATCH /admin/settings` with
 `{"homeVariant": "<design>"}` is live on rajatarun/resume's next page load, no

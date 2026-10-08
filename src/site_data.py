@@ -136,12 +136,12 @@ def lambda_handler(event, context):
     # GET /site/travel -> the travel journal with every date removed (travel_journal.py),
     # and the cafés and restaurants without visit counts (dining.py)
     if path == "/site/travel":
-        from db import get_dining, list_travel_trips
+        from db import get_dining, get_dining_reviews, list_travel_trips
         from dining import public_dining
         from travel_journal import public_view as travel_public_view
         try:
             body = travel_public_view(list_travel_trips())
-            body["dining"] = public_dining(get_dining()["entries"])
+            body["dining"] = public_dining(get_dining()["entries"], get_dining_reviews())
             return _resp(event, 200, body)
         except Exception as e:
             log.exception("travel_read_failed")

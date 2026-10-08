@@ -510,6 +510,38 @@ paths:
                       rebuild: { type: string }
         "400": { $ref: "#/components/responses/BadRequest" }
 
+  /admin/dining/reviews:
+    post:
+      tags: [admin]
+      operationId: saveDiningReviews
+      summary: Replace the café and restaurant reviews
+      description: |
+        Either the reviews as written, `{"text": "..."}`: optional section
+        headings, then `Name — 4★` and a paragraph for each; or
+        `{"reviews": [{"name", "rating", "review", "section"}]}`. A review
+        lands on the place it names (by the merge rules, or a shared
+        distinctive first word); one naming no place adds a place. Reviews
+        never lift a place past the filters: a reviewed fast-food or home-area
+        place stays off the public page, and `reviews` in the response says
+        which and why.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object }
+      responses:
+        "200":
+          description: Saved
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/DiningAdminView"
+                  - type: object
+                    properties:
+                      rebuild: { type: string }
+        "400": { $ref: "#/components/responses/BadRequest" }
+
   /admin/settings:
     get:
       tags: [admin]
@@ -835,6 +867,8 @@ components:
         category: { type: string, enum: [cafe, restaurant, other dining] }
         city: { type: string, nullable: true }
         region: { type: string, nullable: true }
+        rating: { type: integer, minimum: 1, maximum: 5, nullable: true }
+        review: { type: string, nullable: true, description: "Tarun's own review, when he wrote one" }
     DiningAdminView:
       type: object
       properties:
@@ -855,6 +889,16 @@ components:
             properties:
               name: { type: string }
               reason: { type: string }
+        reviews:
+          type: array
+          items:
+            type: object
+            properties:
+              name: { type: string }
+              rating: { type: integer }
+              matched: { type: array, items: { type: string } }
+              public: { type: boolean }
+              hiddenBecause: { type: array, items: { type: string } }
         updatedAt: { type: string, nullable: true }
     TravelPlace:
       type: object

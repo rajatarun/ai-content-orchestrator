@@ -11,7 +11,7 @@ from db import (
     list_events, put_subscriber, list_subscribers, delete_subscriber, add_event,
     get_site_settings, put_site_settings,
     list_travel_trips, put_travel_trips, delete_travel_trip,
-    get_dining, put_dining,
+    get_dining, put_dining, get_dining_reviews, put_dining_reviews,
 )
 from site_settings import admin_view, caller_identity, validate_patch
 import travel_journal
@@ -303,7 +303,7 @@ def lambda_handler(event, context):
     # Cafés and restaurants -- the website shows the kept ones, without visit counts (dining.py)
     if path == "/admin/dining" and method == "GET":
         stored = get_dining()
-        return _resp(event, 200, dining.admin_view(stored["entries"], stored["updatedAt"]))
+        return _resp(event, 200, dining.admin_view(stored["entries"], stored["updatedAt"], get_dining_reviews()))
 
     if path == "/admin/dining" and method == "POST":
         try:
@@ -314,7 +314,21 @@ def lambda_handler(event, context):
         if error:
             return _resp(event, 400, {"error": error})
         updated_at = put_dining(entries, updated_by=caller_identity(event))
-        return _resp(event, 200, {**dining.admin_view(entries, updated_at), "rebuild": _rebuild_site()})
+        view = dining.admin_view(entries, updated_at, get_dining_reviews())
+        return _resp(event, 200, {**view, "rebuild": _rebuild_site()})
+
+    if path == "/admin/dining/reviews" and method == "POST":
+        try:
+            body = _json(event)
+        except ValueError:
+            return _resp(event, 400, {"error": "body must be JSON"})
+        reviews, error = dining.parse_reviews(body)
+        if error:
+            return _resp(event, 400, {"error": error})
+        put_dining_reviews(reviews, updated_by=caller_identity(event))
+        stored = get_dining()
+        view = dining.admin_view(stored["entries"], stored["updatedAt"], reviews)
+        return _resp(event, 200, {**view, "rebuild": _rebuild_site()})
 
     # Subscribers
     if path == "/admin/subscribers" and method == "GET":
