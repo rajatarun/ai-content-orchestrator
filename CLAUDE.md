@@ -132,6 +132,7 @@ in `rajatarun/RoutineWeave` at `tasks/linkedin_topic_scout.json`.
 | Travel trip | `"TRAVEL"` | trip id (the trip as JSON in `data`; see `src/travel_journal.py`) |
 | Cafés & restaurants | `"DINING"` | `"list"` (one item, the last upload as JSON in `data`; see `src/dining.py`) |
 | Café & restaurant reviews | `"DINING"` | `"reviews"` (one item, the last reviews upload as JSON in `data`) |
+| Café & restaurant notes | `"DINING"` | `"notes"` (one item, the last notes upload as JSON in `data`) |
 
 **GSIs:**
 - `StatusUpdatedIndex`: `status` → `updatedAt`
@@ -163,6 +164,7 @@ bearer JWT:
 | DELETE | `/admin/travel/{tripId}` | Remove one trip (idempotent) |
 | GET/POST | `/admin/dining` | The café/restaurant list with what was left out and why / replace it (card export as-is) |
 | POST | `/admin/dining/reviews` | Replace the reviews (the text as written: `Name — 4★` + a paragraph) |
+| POST | `/admin/dining/notes` | Replace the notes (`* Name (address) – 4.5/5. What it is.`; city/state kept, street dropped) |
 
 **Public** (`public_api`, `appointment_api`, `site_data`) — no credentials:
 
@@ -243,7 +245,10 @@ one place; `GET /admin/dining` says what went and why. The public copy (in
 Reviews (`POST /admin/dining/reviews`, stored apart so a new card export keeps
 them) attach to the place they name, or add one, and add `rating` and `review`
 to it; they never lift a place past the filters, and a review naming a
-home-area town counts as home area. `tests/test_dining.py` holds all of it.
+home-area town counts as home area. Notes (`POST /admin/dining/notes`) add a
+one-line description and a public `score` (never shown as his rating), match by
+spelling only, and fill a city the card export left blank, which is what lets
+the home-area filter catch those. `tests/test_dining.py` holds all of it.
 
 **Site settings (the website's homepage design):** `PATCH /admin/settings` with
 `{"homeVariant": "<design>"}` is live on rajatarun/resume's next page load, no

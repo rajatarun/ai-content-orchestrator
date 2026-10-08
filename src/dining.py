@@ -19,7 +19,9 @@ A card statement is not a list of places, so before anything is shown:
 
 Reviews (``POST /admin/dining/reviews``, the text as written: "Name — 4★"
 and a paragraph) attach to the places they name, or add places of their own.
-They never lift a place past the filters above.
+Notes (``POST /admin/dining/notes``: "* Name (address) – 4.5/5. What it is.")
+do the same with a one-line description and a public score, and bring a city
+from the address. Neither lifts a place past the filters above.
 
 ``GET /admin/dining`` shows what was kept and what was left out and why.
 ``GET /site/travel`` carries the kept list without ``visits``: how often
@@ -36,6 +38,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 DINING_KEY = {"pk": "DINING", "sk": "list"}
 REVIEWS_KEY = {"pk": "DINING", "sk": "reviews"}
+NOTES_KEY = {"pk": "DINING", "sk": "notes"}
 MAX_PLACES = 2000
 CATEGORIES = ("cafe", "restaurant", "other dining", "fast food")
 
@@ -45,7 +48,7 @@ FAST_FOOD_CHAINS = {
     "chipotle", "chipotlemexicangrill", "churchs", "dunkin", "dunkindonuts", "culvers", "dairyqueen", "deltaco", "dominos",
     "firehousesubs", "fiveguys", "hardees", "innout", "innoutburger", "jackinthebox",
     "jerseymikes", "jimmyjohns", "kfc", "littlecaesars", "mcdonalds", "pandaexpress",
-    "papajohns", "pizzahut", "popeyes", "raisingcanes", "raisingcaneschickenfingers",
+    "papajohns", "peets", "peetscoffee", "pizzahut", "popeyes", "raisingcanes", "raisingcaneschickenfingers",
     "shakeshack", "sonic", "starbucks", "subway", "tacobell", "wendys", "whataburger", "whitecastle",
     "wingstop", "zaxbys",
 }
@@ -70,7 +73,7 @@ HOME_AREA_TOWNS = {
     "sachse", "southlake", "the colony", "wylie",
 }
 
-PUBLIC_FIELDS = ("name", "category", "city", "region", "rating", "review")
+PUBLIC_FIELDS = ("name", "category", "city", "region", "rating", "review", "note", "score")
 
 
 class DiningError(ValueError):
@@ -175,7 +178,11 @@ def _review_matches(review_name: str, entry_name: str) -> bool:
     return bool(wa and wb) and wa[0] == wb[0] and len(wa[0]) >= 5 and wa[0] not in GENERIC_FIRST_WORDS
 
 
-def curate(entries: List[Dict[str, Any]], reviews: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:
+def curate(
+    entries: List[Dict[str, Any]],
+    reviews: Optional[List[Dict[str, Any]]] = None,
+    notes: Optional[List[Dict[str, Any]]] = None,
+) -> Dict[str, Any]:
     """Merge spellings of one place, attach the reviews, then keep what is a
     sit-down café or restaurant away from home.
 
@@ -217,6 +224,27 @@ def curate(entries: List[Dict[str, Any]], reviews: Optional[List[Dict[str, Any]]
                 landed.append(target)
         review_report.append({"review": review, "landed": landed})
 
+    # Notes: a one-line description and a public score, with a city from the
+    # address. They match by spelling only (not a shared first word: "Simply
+    # Thai Bistro" is not "Simply South"), and their city fills one the card
+    # export left blank, which is how a home-area place with no city is caught.
+    note_report = []
+    for note in notes or []:
+        targets = [m for m in merged if any(_same_place(_review_key(note["name"]), _review_key(n)) for n in m["_names"])]
+        if not targets:
+            targets = [{
+                "name": note["name"], "category": note["category"], "city": note["city"],
+                "region": note["region"], "visits": 0, "_names": [note["name"]], "_fromNote": True,
+            }]
+            merged.append(targets[0])
+        for target in targets:
+            target["note"], target["score"] = note["note"], note["score"]
+            if not target["city"] and note["city"]:
+                target["city"], target["region"] = note["city"], note["region"]
+            if note["homeArea"]:
+                target["_homeArea"] = True
+        note_report.append({"note": note, "landed": targets})
+
     kept, excluded = [], []
     for entry in merged:
         lowered = entry["name"].lower()
@@ -228,6 +256,8 @@ def curate(entries: List[Dict[str, Any]], reviews: Optional[List[Dict[str, Any]]
             reason = "fast food chain"
         elif (entry["city"] or "").strip().lower() in HOME_AREA_TOWNS:
             reason = "home area"
+        elif entry.get("_homeArea"):
+            reason = "home area (listed as local)"
         elif any(re.search(rf"\b{re.escape(town)}\b", review_text) for town in HOME_AREA_TOWNS):
             reason = "home area (named in the review)"
         else:
@@ -238,6 +268,10 @@ def curate(entries: List[Dict[str, Any]], reviews: Optional[List[Dict[str, Any]]
             clean["rating"], clean["review"] = entry["rating"], entry["review"]
         if entry.get("_fromReview"):
             clean["fromReview"] = True
+        if entry.get("note"):
+            clean["note"], clean["score"] = entry["note"], entry["score"]
+        if entry.get("_fromNote"):
+            clean["fromNote"] = True
         if len(entry["_names"]) > 1:
             clean["alsoListedAs"] = [n for n in entry["_names"] if n != entry["name"]]
         if reason:
@@ -255,12 +289,25 @@ def curate(entries: List[Dict[str, Any]], reviews: Optional[List[Dict[str, Any]]
         }
         for item in review_report
     ]
-    return {"kept": kept, "excluded": excluded, "reviews": reviewed}
+    noted = [
+        {
+            "name": item["note"]["name"],
+            "matched": [t["name"] for t in item["landed"] if not t.get("_fromNote")],
+            "public": any(not t["_reason"] for t in item["landed"]),
+            "hiddenBecause": sorted({t["_reason"] for t in item["landed"] if t["_reason"]}),
+        }
+        for item in note_report
+    ]
+    return {"kept": kept, "excluded": excluded, "reviews": reviewed, "notes": noted}
 
 
-def public_dining(entries: List[Dict[str, Any]], reviews: Optional[List[Dict[str, Any]]] = None) -> List[Dict[str, Any]]:
+def public_dining(
+    entries: List[Dict[str, Any]],
+    reviews: Optional[List[Dict[str, Any]]] = None,
+    notes: Optional[List[Dict[str, Any]]] = None,
+) -> List[Dict[str, Any]]:
     """The kept places, without visit counts, by city then name (never by how often)."""
-    kept = curate(entries, reviews)["kept"]
+    kept = curate(entries, reviews, notes)["kept"]
     shown = [{field: entry.get(field) for field in PUBLIC_FIELDS} for entry in kept]
     shown.sort(key=lambda e: ((e["city"] or "~").lower(), e["name"].lower()))
     return shown
@@ -270,13 +317,15 @@ def admin_view(
     entries: List[Dict[str, Any]],
     updated_at: Optional[str] = None,
     reviews: Optional[List[Dict[str, Any]]] = None,
+    notes: Optional[List[Dict[str, Any]]] = None,
 ) -> Dict[str, Any]:
-    curated = curate(entries, reviews)
+    curated = curate(entries, reviews, notes)
     return {
         "uploaded": len(entries),
         "kept": curated["kept"],
         "excluded": curated["excluded"],
         "reviews": curated["reviews"],
+        "notes": curated["notes"],
         "updatedAt": updated_at,
     }
 
@@ -367,3 +416,105 @@ def parse_reviews(body: Any) -> Tuple[Optional[List[Dict[str, Any]]], Optional[s
     except DiningError as error:
         return None, str(error)
     return reviews, None
+
+
+# -- notes --------------------------------------------------------------------
+
+NOTE_LINE = re.compile(
+    r"^[*\-•]\s*(?P<name>.+?)\s*(?:\((?P<address>[^)]*)\))?\s*[–—-]\s*(?P<score>[1-5](?:\.\d)?)\s*/\s*5\.?\s*(?P<note>.*)$"
+)
+CITY_STATE = re.compile(r"(?:^|,)\s*(?P<city>[A-Za-z][A-Za-z .'-]*?),\s*(?P<state>[A-Z]{2})(?:\s+\d{5})?\s*$")
+TREATS = re.compile(r"gelato|ice cream|doughnut|donut|bakery|popcorn|candy|dessert|sweets|smoothie|juice|cupcake", re.I)
+COFFEE = re.compile(r"coffee|caf[eé]|espresso|roaster", re.I)
+MAX_NOTE = 500
+
+
+def _note_category(name: str, note: str) -> str:
+    """The name first ("Sunrise Gelato" is a treat whatever else it serves),
+    then how the note opens."""
+    if TREATS.search(name):
+        return "other dining"
+    if COFFEE.search(name) or COFFEE.search(note[:60]):
+        return "cafe"
+    if TREATS.search(note):
+        return "other dining"
+    return "restaurant"
+
+
+def _note(raw: Dict[str, Any], where: str) -> Dict[str, Any]:
+    name = _text(raw.get("name"), f"{where}.name")
+    if not name:
+        raise DiningError(f"{where}.name: required")
+    score = raw.get("score")
+    if score is not None and (isinstance(score, bool) or not isinstance(score, (int, float)) or not 1 <= score <= 5):
+        raise DiningError(f"{where}.score: a number from 1 to 5, or null")
+    note = raw.get("note")
+    if note is not None and not isinstance(note, str):
+        raise DiningError(f"{where}.note: must be text")
+    note = " ".join((note or "").split())
+    if len(note) > MAX_NOTE:
+        raise DiningError(f"{where}.note: longer than {MAX_NOTE} characters")
+    category = raw.get("category") or _note_category(name, note)
+    if category not in CATEGORIES:
+        raise DiningError(f"{where}.category: one of {', '.join(CATEGORIES)}")
+    return {
+        "name": name,
+        "city": _text(raw.get("city"), f"{where}.city"),
+        "region": _text(raw.get("region"), f"{where}.region", 60),
+        "score": float(score) if score is not None else None,
+        "note": note or None,
+        "category": category,
+        "homeArea": raw.get("homeArea") is True,
+    }
+
+
+def parse_notes_text(text: str) -> List[Dict[str, Any]]:
+    """Notes as listed: section headings, then "* Name (address) – 4.5/5. What it is."
+
+    Only the city and state are kept from an address. An address of "DFW
+    area", or a place with no city in a section headed as local to DFW, is
+    home area; a place with a city is judged by HOME_AREA_TOWNS. Bullets with no score (a line naming chains to ignore) are skipped.
+    """
+    out: List[Dict[str, Any]] = []
+    local = False
+    for line in (l.strip() for l in text.splitlines()):
+        if not line or line.startswith("("):
+            continue
+        if not line[0] in "*-•":
+            local = bool(re.search(r"\b(local|home)\b", line, re.I)) and "dfw" in line.lower()
+            continue
+        match = NOTE_LINE.match(line)
+        if not match:
+            continue
+        address = (match["address"] or "").strip()
+        place = CITY_STATE.search(address)
+        out.append({
+            "name": match["name"].strip(),
+            "city": place["city"].strip() if place else None,
+            "region": place["state"] if place else None,
+            "score": float(match["score"]),
+            "note": match["note"].strip(),
+            # A city says where it is (a beach town in a "local" list is still
+            # that beach town); the section only speaks for places with no city.
+            "homeArea": (local and not place) or "dfw" in address.lower(),
+        })
+    return out
+
+
+def parse_notes(body: Any) -> Tuple[Optional[List[Dict[str, Any]]], Optional[str]]:
+    """``{"text": "..."}`` as listed, or ``{"notes": [{name, city, region, score, note}]}``."""
+    try:
+        if isinstance(body, dict) and isinstance(body.get("text"), str):
+            raw, where = parse_notes_text(body["text"]), "text"
+        elif isinstance(body, dict) and isinstance(body.get("notes"), list):
+            raw, where = body["notes"], "notes"
+        else:
+            raise DiningError('(root): expected {"text": "..."} or {"notes": [...]}')
+        if not raw:
+            raise DiningError(f'{where}: no notes found (lines like "* Name (City, ST) – 4.5/5. What it is.")')
+        if len(raw) > MAX_PLACES:
+            raise DiningError(f"{where}: at most {MAX_PLACES} notes")
+        notes = [_note(r if isinstance(r, dict) else {}, f"{where}.{i}") for i, r in enumerate(raw)]
+    except DiningError as error:
+        return None, str(error)
+    return notes, None

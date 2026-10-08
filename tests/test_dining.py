@@ -28,7 +28,7 @@ os.environ.setdefault("ARTICLES_BUCKET", "test-bucket")
 import admin_api  # noqa: E402
 import db  # noqa: E402
 import site_data  # noqa: E402
-from dining import curate, parse_reviews, parse_upload  # noqa: E402
+from dining import curate, parse_notes, parse_reviews, parse_upload  # noqa: E402
 
 
 class FakeTable:
@@ -138,7 +138,9 @@ def test_the_public_list_has_no_visit_counts_and_is_not_ranked(table):
     # By city, then name; Saffron House's visits put it nowhere in particular.
     assert names == ["Harbor Grill", "Sugar loaf", "1418 Coffeehouse", "Madras",
                      "Madrasi Spice Kitchen", "Saffron House"]
-    assert all(set(d) == {"name", "category", "city", "region", "rating", "review"} for d in public["dining"])
+    assert all(
+        set(d) == {"name", "category", "city", "region", "rating", "review", "note", "score"} for d in public["dining"]
+    )
     assert "visits" not in json.dumps(public)
 
 
@@ -254,3 +256,71 @@ def test_saved_reviews_reach_the_public_list(table):
     # A new card upload keeps the reviews.
     _call(admin_api, "POST", "/admin/dining", EXPORT)
     assert {d["name"]: d for d in _call(site_data, "GET", "/site/travel")[1]["dining"]}["Harbor Grill"]["rating"] == 5
+
+
+# -- notes --------------------------------------------------------------------
+
+NOTES_TEXT = """Local Spots Near Home (DFW)
+ * Lantern Noodle House (100 Main St, Plano, TX 75024) – 4.6/5. Hand-pulled noodles in a small room.
+ * Quiet Grounds (DFW area) – 4.5/5. A calm coffee bar.
+ * Beach Shack (1 Shore Rd, Corpus Christi, TX 78401) – 4.3/5. Fish tacos by the water.
+Out-of-State Dining (Travel)
+ * Harbor Grill (5 Dock St, Boston, MA 02110) – 4.6/5. Fresh fish on the dock.
+ * Sunrise Gelato (Asheville, NC) – 4.7/5. Homemade gelato and espresso.
+ * Simply Lemongrass (Seattle, WA) – 4.5/5. Thai curries and noodle bowls.
+ * Fast Food, Coffee, & Pizza: The list also includes Wendy's and Taco Bell.
+(Note: Non-restaurant transactions were excluded.)
+"""
+
+
+def test_notes_are_read_as_listed_keeping_only_city_and_state():
+    notes, error = parse_notes({"text": NOTES_TEXT})
+    assert error is None
+    assert [(n["name"], n["city"], n["region"], n["score"], n["homeArea"]) for n in notes] == [
+        ("Lantern Noodle House", "Plano", "TX", 4.6, False),
+        ("Quiet Grounds", None, None, 4.5, True),
+        ("Beach Shack", "Corpus Christi", "TX", 4.3, False),  # a "local" section does not move a city
+        ("Harbor Grill", "Boston", "MA", 4.6, False),
+        ("Sunrise Gelato", "Asheville", "NC", 4.7, False),
+        ("Simply Lemongrass", "Seattle", "WA", 4.5, False),
+    ]
+    assert notes[4]["category"] == "other dining" and notes[1]["category"] == "cafe"
+    assert "Main St" not in json.dumps(notes)  # street addresses are not kept
+
+
+def test_notes_attach_by_spelling_bring_cities_and_respect_the_filters():
+    notes, _ = parse_notes({"text": NOTES_TEXT})
+    curated = curate(parse_upload(EXPORT)[0], None, notes)
+    kept = {e["name"]: e for e in curated["kept"]}
+    report = {n["name"]: n for n in curated["notes"]}
+
+    assert kept["Harbor Grill"]["note"] == "Fresh fish on the dock."  # on the card's Boston entry
+    assert kept["Harbor Grill"]["score"] == 4.6
+    assert kept["Beach Shack"]["fromNote"] is True
+    assert report["Lantern Noodle House"]["hiddenBecause"] == ["home area"]
+    assert report["Quiet Grounds"]["hiddenBecause"] == ["home area (listed as local)"]
+    assert report["Simply Lemongrass"]["matched"] == []  # not the card's "Saffron House" or anything sharing a word
+
+
+def test_a_note_gives_a_cityless_card_entry_its_city(table):
+    _call(admin_api, "POST", "/admin/dining", [place("Ridge Bistro", visits=4)])
+    status, saved = _call(admin_api, "POST", "/admin/dining/notes", {"notes": [
+        {"name": "Ridge Bistro", "city": "Frisco", "region": "TX", "score": 4.2, "note": "Patio dining."},
+    ]})
+    assert status == 200
+    assert saved["notes"][0]["hiddenBecause"] == ["home area"]  # caught now that it has a city
+    assert "Ridge Bistro" not in {d["name"] for d in _call(site_data, "GET", "/site/travel")[1]["dining"]}
+
+
+@pytest.mark.parametrize(
+    "body, where",
+    [
+        ({"text": "Nothing that looks like a note."}, "no notes"),
+        ({"notes": [{"name": "X", "score": 7}]}, "notes.0.score"),
+        ({"notes": [{"name": ""}]}, "notes.0.name"),
+        ({"places": []}, "(root)"),
+    ],
+)
+def test_bad_notes_name_the_problem(body, where):
+    notes, error = parse_notes(body)
+    assert notes is None and where in error

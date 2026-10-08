@@ -12,6 +12,7 @@ from db import (
     get_site_settings, put_site_settings,
     list_travel_trips, put_travel_trips, delete_travel_trip,
     get_dining, put_dining, get_dining_reviews, put_dining_reviews,
+    get_dining_notes, put_dining_notes,
 )
 from site_settings import admin_view, caller_identity, validate_patch
 import travel_journal
@@ -303,7 +304,8 @@ def lambda_handler(event, context):
     # Cafés and restaurants -- the website shows the kept ones, without visit counts (dining.py)
     if path == "/admin/dining" and method == "GET":
         stored = get_dining()
-        return _resp(event, 200, dining.admin_view(stored["entries"], stored["updatedAt"], get_dining_reviews()))
+        return _resp(event, 200, dining.admin_view(
+            stored["entries"], stored["updatedAt"], get_dining_reviews(), get_dining_notes()))
 
     if path == "/admin/dining" and method == "POST":
         try:
@@ -314,7 +316,7 @@ def lambda_handler(event, context):
         if error:
             return _resp(event, 400, {"error": error})
         updated_at = put_dining(entries, updated_by=caller_identity(event))
-        view = dining.admin_view(entries, updated_at, get_dining_reviews())
+        view = dining.admin_view(entries, updated_at, get_dining_reviews(), get_dining_notes())
         return _resp(event, 200, {**view, "rebuild": _rebuild_site()})
 
     if path == "/admin/dining/reviews" and method == "POST":
@@ -327,7 +329,20 @@ def lambda_handler(event, context):
             return _resp(event, 400, {"error": error})
         put_dining_reviews(reviews, updated_by=caller_identity(event))
         stored = get_dining()
-        view = dining.admin_view(stored["entries"], stored["updatedAt"], reviews)
+        view = dining.admin_view(stored["entries"], stored["updatedAt"], reviews, get_dining_notes())
+        return _resp(event, 200, {**view, "rebuild": _rebuild_site()})
+
+    if path == "/admin/dining/notes" and method == "POST":
+        try:
+            body = _json(event)
+        except ValueError:
+            return _resp(event, 400, {"error": "body must be JSON"})
+        notes, error = dining.parse_notes(body)
+        if error:
+            return _resp(event, 400, {"error": error})
+        put_dining_notes(notes, updated_by=caller_identity(event))
+        stored = get_dining()
+        view = dining.admin_view(stored["entries"], stored["updatedAt"], get_dining_reviews(), notes)
         return _resp(event, 200, {**view, "rebuild": _rebuild_site()})
 
     # Subscribers

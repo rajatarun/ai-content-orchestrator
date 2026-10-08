@@ -542,6 +542,38 @@ paths:
                       rebuild: { type: string }
         "400": { $ref: "#/components/responses/BadRequest" }
 
+  /admin/dining/notes:
+    post:
+      tags: [admin]
+      operationId: saveDiningNotes
+      summary: Replace the café and restaurant notes
+      description: |
+        A one-line description and a public score per place, with its city.
+        Either as listed, `{"text": "..."}`: section headings, then
+        `* Name (address) – 4.5/5. What it is.` (only the city and state are
+        kept from the address); or `{"notes": [{"name", "city", "region",
+        "score", "note"}]}`. A note lands on the place it names (by spelling
+        only) or adds one, and fills in a city the card export left blank.
+        "DFW area", or a cityless place in a section headed local to DFW, is
+        home area. Notes never lift a place past the filters.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object }
+      responses:
+        "200":
+          description: Saved
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/DiningAdminView"
+                  - type: object
+                    properties:
+                      rebuild: { type: string }
+        "400": { $ref: "#/components/responses/BadRequest" }
+
   /admin/settings:
     get:
       tags: [admin]
@@ -869,6 +901,8 @@ components:
         region: { type: string, nullable: true }
         rating: { type: integer, minimum: 1, maximum: 5, nullable: true }
         review: { type: string, nullable: true, description: "Tarun's own review, when he wrote one" }
+        note: { type: string, nullable: true, description: A one-line description of the place }
+        score: { type: number, nullable: true, description: "A public score out of 5 (not Tarun's rating)" }
     DiningAdminView:
       type: object
       properties:
@@ -896,6 +930,15 @@ components:
             properties:
               name: { type: string }
               rating: { type: integer }
+              matched: { type: array, items: { type: string } }
+              public: { type: boolean }
+              hiddenBecause: { type: array, items: { type: string } }
+        notes:
+          type: array
+          items:
+            type: object
+            properties:
+              name: { type: string }
               matched: { type: array, items: { type: string } }
               public: { type: boolean }
               hiddenBecause: { type: array, items: { type: string } }

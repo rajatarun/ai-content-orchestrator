@@ -228,3 +228,21 @@ def put_dining_reviews(reviews: List[Dict[str, Any]], updated_by: Optional[str] 
     _t().put_item(Item=_strip_none_and_empty(item))
     log.info("put_dining_reviews", extra={"count": len(reviews), "updatedBy": updated_by})
     return now
+
+def get_dining_notes() -> List[Dict[str, Any]]:
+    """The stored café and restaurant notes (see dining.py), [] if none."""
+    import json
+    from dining import NOTES_KEY
+    item = _t().get_item(Key=NOTES_KEY).get("Item") or {}
+    return json.loads(item["data"]) if item.get("data") else []
+
+def put_dining_notes(notes: List[Dict[str, Any]], updated_by: Optional[str] = None) -> str:
+    """Replace the notes with a validated set. Returns updatedAt."""
+    import json
+    from dining import NOTES_KEY
+    now = now_iso()
+    item = {**NOTES_KEY, "entityType": "DINING_NOTES", "data": json.dumps(notes, ensure_ascii=False),
+            "updatedAt": now, "updatedBy": updated_by}
+    _t().put_item(Item=_strip_none_and_empty(item))
+    log.info("put_dining_notes", extra={"count": len(notes), "updatedBy": updated_by})
+    return now
