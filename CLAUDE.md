@@ -129,6 +129,8 @@ in `rajatarun/RoutineWeave` at `tasks/linkedin_topic_scout.json`.
 | Event | `"EVENT#{articleId}"` | ISO timestamp |
 | Subscriber | `"SUBSCRIBER"` | email address |
 | Site settings | `"SETTINGS"` | `"site"` (one item; see `src/site_settings.py`) |
+| Travel trip | `"TRAVEL"` | trip id (the trip as JSON in `data`; see `src/travel_journal.py`) |
+| Cafés & restaurants | `"DINING"` | `"list"` (one item, the last upload as JSON in `data`; see `src/dining.py`) |
 
 **GSIs:**
 - `StatusUpdatedIndex`: `status` → `updatedAt`
@@ -156,6 +158,9 @@ bearer JWT:
 | GET/POST | `/admin/subscribers` | List / add |
 | DELETE | `/admin/subscribers/{email}` | Remove (idempotent) |
 | GET/PATCH | `/admin/settings` | Read / change site settings (e.g. `homeVariant`, the website's homepage design) |
+| GET/POST | `/admin/travel` | The full travel journal, dates included / add or replace trips (Ask Photos JSON as-is) |
+| DELETE | `/admin/travel/{tripId}` | Remove one trip (idempotent) |
+| GET/POST | `/admin/dining` | The café/restaurant list with what was left out and why / replace it (card export as-is) |
 
 **Public** (`public_api`, `appointment_api`, `site_data`) — no credentials:
 
@@ -166,6 +171,7 @@ bearer JWT:
 | GET | `/site/posts` | Published article cards, read from S3 |
 | GET | `/site/posts/{id}` | One article as stored in S3 (a snapshot, not the live item) |
 | GET | `/site/settings` | Site settings the website reads on every homepage load |
+| GET | `/site/travel` | The travel journal with **every date removed**, plus the curated cafés/restaurants **without visit counts**; the website builds `/traveller` from it |
 
 Status transitions go through the actions endpoint, not PATCH: PATCHing
 `status` directly skips the S3 publish and the event-log write that `approve`
@@ -214,6 +220,25 @@ drafts describe a world months old while nothing fails and nothing logs an
 error. Where the topic comes from is the other half — see below.
 
 **Add a new Lambda function:** Define it in `template.yaml` under `Resources`, then create the handler in `src/`.
+
+**Travel journal (the website's `/traveller`):** the admin UI uploads Ask Photos
+JSON to `POST /admin/travel`; trips are upserted by id, so it can arrive in
+pieces. `GET /site/travel` is the public view and must never carry a date:
+no date fields, photo timestamps, trip ids (Ask Photos writes them as dates),
+years or month names in the text, or date order. `tests/test_travel_journal.py` holds it to
+that; a new trip field is admin-only until `public_trip` is changed on purpose.
+The website reads `/site/travel` at **build time**, so a change shows after its
+next build; set the `SITE_REBUILD_HOOK_URL` repo secret (passed as
+`SiteRebuildHookUrl`, an Amplify incoming webhook) and every save triggers one.
+
+**Cafés and restaurants (also `/traveller`):** `POST /admin/dining` takes the
+card-transaction export and replaces the list. `src/dining.py` leaves out fast
+food (labelled, or a chain in `FAST_FOOD_CHAINS`, Starbucks and Dunkin' included),
+anywhere in the home area (`HOME_AREA_TOWNS`), delivery apps, card offers,
+workplace cafeterias, generic names and card codes, and merges two spellings of
+one place; `GET /admin/dining` says what went and why. The public copy (in
+`/site/travel`) never has `visits`: frequency says where someone lives and works.
+`tests/test_dining.py` holds both.
 
 **Site settings (the website's homepage design):** `PATCH /admin/settings` with
 `{"homeVariant": "<design>"}` is live on rajatarun/resume's next page load, no

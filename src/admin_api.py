@@ -10,8 +10,12 @@ from db import (
     put_article, get_article, update_article, list_by_status,
     list_events, put_subscriber, list_subscribers, delete_subscriber, add_event,
     get_site_settings, put_site_settings,
+    list_travel_trips, put_travel_trips, delete_travel_trip,
+    get_dining, put_dining,
 )
 from site_settings import admin_view, caller_identity, validate_patch
+import travel_journal
+import dining
 from statuses import (
     ALL_ARTICLE_STATUSES,
     APPROVED,
@@ -106,6 +110,25 @@ def _qs(event):
         return out
     # HTTP API (v2)
     return parse_qs(event.get("rawQueryString") or "")
+
+def _rebuild_site() -> str:
+    """Ask the website to rebuild, so a journal change reaches /traveller.
+
+    The site is a static export that reads GET /site/travel at build time.
+    SITE_REBUILD_HOOK_URL is an Amplify incoming webhook; without one, the
+    change shows on the site's next deploy. Never fails the request.
+    """
+    url = os.environ.get("SITE_REBUILD_HOOK_URL", "").strip()
+    if not url:
+        return "not-configured"
+    import urllib.request
+    try:
+        req = urllib.request.Request(url, data=b"{}", method="POST", headers={"Content-Type": "application/json"})
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            return "triggered" if 200 <= resp.status < 300 else f"failed: HTTP {resp.status}"
+    except Exception as e:  # noqa: BLE001 -- best effort by design
+        log.warning("site_rebuild_failed", extra={"error": str(e)})
+        return "failed"
 
 def lambda_handler(event, context):
     path = event.get("path") or event.get("rawPath") or ""
@@ -253,6 +276,45 @@ def lambda_handler(event, context):
         if error:
             return _resp(event, 400, {"error": error})
         return _resp(event, 200, admin_view(put_site_settings(patch, updated_by=caller_identity(event))))
+
+    # Travel journal -- full history here; the website gets the undated view (travel_journal.py)
+    if path == "/admin/travel" and method == "GET":
+        return _resp(event, 200, travel_journal.admin_view(list_travel_trips()))
+
+    if path == "/admin/travel" and method == "POST":
+        try:
+            body = _json(event)
+        except ValueError:
+            return _resp(event, 400, {"error": "body must be JSON"})
+        trips, error = travel_journal.parse_upload(body)
+        if error:
+            return _resp(event, 400, {"error": error})
+        saved = put_travel_trips(trips, updated_by=caller_identity(event))
+        total = len(list_travel_trips())
+        return _resp(event, 200, {"saved": saved, "total": total, "rebuild": _rebuild_site()})
+
+    if path.startswith("/admin/travel/") and method == "DELETE":
+        trip_id = unquote(path[len("/admin/travel/"):])
+        if not travel_journal.TRIP_ID.match(trip_id):
+            return _resp(event, 400, {"error": "invalid trip id"})
+        delete_travel_trip(trip_id)
+        return _resp(event, 200, {"deleted": trip_id, "rebuild": _rebuild_site()})
+
+    # Cafés and restaurants -- the website shows the kept ones, without visit counts (dining.py)
+    if path == "/admin/dining" and method == "GET":
+        stored = get_dining()
+        return _resp(event, 200, dining.admin_view(stored["entries"], stored["updatedAt"]))
+
+    if path == "/admin/dining" and method == "POST":
+        try:
+            body = _json(event)
+        except ValueError:
+            return _resp(event, 400, {"error": "body must be JSON"})
+        entries, error = dining.parse_upload(body)
+        if error:
+            return _resp(event, 400, {"error": error})
+        updated_at = put_dining(entries, updated_by=caller_identity(event))
+        return _resp(event, 200, {**dining.admin_view(entries, updated_at), "rebuild": _rebuild_site()})
 
     # Subscribers
     if path == "/admin/subscribers" and method == "GET":
