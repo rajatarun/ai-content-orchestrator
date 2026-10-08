@@ -19,6 +19,8 @@ A card statement is not a list of places, so before anything is shown:
 
 Reviews (``POST /admin/dining/reviews``, the text as written: "Name — 4★"
 and a paragraph) attach to the places they name, or add places of their own.
+Each post adds to the reviews already saved (a place reviewed again takes the
+new review); ``"replace": true`` swaps the whole set.
 Notes (``POST /admin/dining/notes``: "* Name (address) – 4.5/5. What it is.")
 do the same with a one-line description and a public score, and bring a city
 from the address. Neither lifts a place past the filters above.
@@ -210,7 +212,14 @@ def curate(
     for review in reviews or []:
         landed = []
         for part in review["names"]:
-            targets = [m for m in merged if any(_review_matches(part, n) for n in m["_names"])]
+            # A shared first word ties a review to a card entry ("Armor Coffee" /
+            # "Armor Company"), not to a place another review added: "Simply
+            # Thai Bistro" is not "Simply South".
+            targets = [
+                m for m in merged
+                if any((_same_place(_review_key(part), _review_key(n)) if m.get("_fromReview")
+                        else _review_matches(part, n)) for n in m["_names"])
+            ]
             if not targets:
                 targets = [{
                     "name": part, "category": review["category"], "city": None, "region": None,
@@ -219,6 +228,8 @@ def curate(
                 merged.append(targets[0])
             for target in targets:
                 target["rating"], target["review"] = review["rating"], review["review"]
+                if review.get("homeArea"):
+                    target["_homeArea"] = True
                 target.setdefault("_cardName", target["name"])
                 target["name"] = part  # his spelling over the card's ("Armor Coffee", not "Armor Company")
                 landed.append(target)
@@ -258,7 +269,7 @@ def curate(
             reason = "home area"
         elif entry.get("_homeArea"):
             reason = "home area (listed as local)"
-        elif any(re.search(rf"\b{re.escape(town)}\b", review_text) for town in HOME_AREA_TOWNS):
+        elif any(re.search(rf"\b{re.escape(town)}\b", review_text) for town in (*HOME_AREA_TOWNS, "dfw")):
             reason = "home area (named in the review)"
         else:
             reason = next((why for pattern, why in NOT_A_PLACE if pattern.search(lowered)), None)
@@ -337,13 +348,32 @@ GENERIC_FIRST_WORDS = {"the", "cafe", "coffee", "le", "la", "les", "el", "pizza"
 # Parts of a review title that qualify it rather than name a place ("Domino's / Pizza Places").
 NOT_A_NAME = re.compile(r"^(pizza|coffee|burger|taco)?\s*(places|shops|spots|chains?)$", re.I)
 MAX_REVIEW = 2000
+AWAY = re.compile(r"\b(vacation|on a trip|while traveling|when I'?m traveling)\b", re.I)
 
 
-def _section_category(section: Optional[str]) -> str:
+def _review_category(section: Optional[str], name: str, text: str) -> str:
+    """A coffee section ("Coffee Shops, Bakeries & Cafés") says it for every
+    review under it. Any other section ("Local DFW Restaurants & Cafés",
+    "National & Regional Chains") leaves it to the name, then, where the
+    section does not say restaurant, to how the review opens ("Dutch Bros.
+    is my choice when I want ... coffee")."""
     s = (section or "").lower()
-    if "coffee" in s or "café" in s or "cafe" in s or "bakeries" in s:
+    coffee_section = any(w in s for w in ("coffee", "café", "cafe", "bakeries"))
+    restaurant_section = "restaurant" in s
+    if coffee_section and not restaurant_section:
+        return "cafe"
+    if TREATS.search(name):
+        return "other dining"
+    if COFFEE.search(name):
+        return "cafe"
+    if not restaurant_section and re.search(r"coffee|espresso|latte|caf[eé]|\bchai\b", text[:120], re.I):
         return "cafe"
     return "restaurant"
+
+
+def _local_section(line: str) -> bool:
+    """A heading that says its places are around home ("Local DFW Restaurants")."""
+    return bool(re.search(r"\b(local|home)\b", line, re.I)) and "dfw" in line.lower()
 
 
 def _review(raw: Dict[str, Any], where: str) -> Dict[str, Any]:
@@ -365,7 +395,11 @@ def _review(raw: Dict[str, Any], where: str) -> Dict[str, Any]:
         raise DiningError(f"{where}.name: no place name in it")
     return {
         "name": name, "names": names, "rating": rating, "review": text,
-        "section": section, "category": _section_category(section),
+        "section": section, "category": _review_category(section, name, text),
+        # A review has no city, so a section headed as local speaks for it,
+        # unless the review itself is about being away ("the vacation").
+        "homeArea": raw.get("homeArea") is True
+        or (_local_section(section or "") and not AWAY.search(text)),
     }
 
 
@@ -416,6 +450,17 @@ def parse_reviews(body: Any) -> Tuple[Optional[List[Dict[str, Any]]], Optional[s
     except DiningError as error:
         return None, str(error)
     return reviews, None
+
+
+def merge_reviews(stored: List[Dict[str, Any]], new: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """The stored reviews with ``new`` added: a review of a place already
+    reviewed ("Dutch Bros." after "Dutch Bros. Coffee") replaces that one, so
+    the reviews can arrive a list at a time and be rewritten."""
+    def same(a: Dict[str, Any], b: Dict[str, Any]) -> bool:
+        return any(_same_place(_review_key(x), _review_key(y)) for x in a["names"] for y in b["names"])
+
+    kept = [old for old in stored if not any(same(old, review) for review in new)]
+    return kept + list(new)
 
 
 # -- notes --------------------------------------------------------------------
@@ -481,7 +526,7 @@ def parse_notes_text(text: str) -> List[Dict[str, Any]]:
         if not line or line.startswith("("):
             continue
         if not line[0] in "*-•":
-            local = bool(re.search(r"\b(local|home)\b", line, re.I)) and "dfw" in line.lower()
+            local = _local_section(line)
             continue
         match = NOTE_LINE.match(line)
         if not match:

@@ -163,7 +163,7 @@ bearer JWT:
 | GET/POST | `/admin/travel` | The full travel journal, dates included / add or replace trips (Ask Photos JSON as-is) |
 | DELETE | `/admin/travel/{tripId}` | Remove one trip (idempotent) |
 | GET/POST | `/admin/dining` | The café/restaurant list with what was left out and why / replace it (card export as-is) |
-| POST | `/admin/dining/reviews` | Replace the reviews (the text as written: `Name — 4★` + a paragraph) |
+| POST | `/admin/dining/reviews` | Add reviews (the text as written: `Name — 4★` + a paragraph); a place reviewed again takes the new one; `"replace": true` swaps the set |
 | POST | `/admin/dining/notes` | Replace the notes (`* Name (address) – 4.5/5. What it is.`; city/state kept, street dropped) |
 
 **Public** (`public_api`, `appointment_api`, `site_data`) — no credentials:
@@ -245,7 +245,12 @@ one place; `GET /admin/dining` says what went and why. The public copy (in
 Reviews (`POST /admin/dining/reviews`, stored apart so a new card export keeps
 them) attach to the place they name, or add one, and add `rating` and `review`
 to it; they never lift a place past the filters, and a review naming a
-home-area town counts as home area. Notes (`POST /admin/dining/notes`) add a
+home-area town or DFW, or under a "Local DFW" heading (unless it is about a
+vacation), counts as home area. Each post adds to the saved reviews, a place
+reviewed again taking the new text, so they can arrive a list at a time;
+`"replace": true` swaps the set. A shared first word ties a review to a card
+entry, never to a place another review added ("Simply Thai Bistro" is not
+"Simply South"). Notes (`POST /admin/dining/notes`) add a
 one-line description and a public `score` (never shown as his rating), match by
 spelling only, and fill a city the card export left blank, which is what lets
 the home-area filter catch those. `tests/test_dining.py` holds all of it.

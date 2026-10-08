@@ -514,11 +514,15 @@ paths:
     post:
       tags: [admin]
       operationId: saveDiningReviews
-      summary: Replace the café and restaurant reviews
+      summary: Add café and restaurant reviews
       description: |
         Either the reviews as written, `{"text": "..."}`: optional section
         headings, then `Name — 4★` and a paragraph for each; or
-        `{"reviews": [{"name", "rating", "review", "section"}]}`. A review
+        `{"reviews": [{"name", "rating", "review", "section"}]}`. They are
+        added to the reviews already saved, and a place reviewed again takes
+        the new review; `"replace": true` swaps the whole set instead. A
+        section headed as local to DFW makes its reviews home area, except
+        one about being away ("the vacation"). A review
         lands on the place it names (by the merge rules, or a shared
         distinctive first word); one naming no place adds a place. Reviews
         never lift a place past the filters: a reviewed fast-food or home-area
