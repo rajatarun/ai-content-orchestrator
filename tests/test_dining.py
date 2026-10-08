@@ -202,7 +202,7 @@ def test_review_text_is_read_as_written():
     assert [(r["name"], r["rating"], r["category"]) for r in reviews] == [
         ("Sugar Loaf", 5, "cafe"),
         ("Starbucks", 4, "cafe"),
-        ("Moonbeam Coffee / Coffee Shops", 4, "restaurant"),
+        ("Moonbeam Coffee / Coffee Shops", 4, "cafe"),  # a mixed section: the name says café
         ("Harbor Grill", 5, "restaurant"),
         ("Ridge Bistro", 5, "restaurant"),
         ("The Olive Tree", 5, "restaurant"),
@@ -256,6 +256,65 @@ def test_saved_reviews_reach_the_public_list(table):
     # A new card upload keeps the reviews.
     _call(admin_api, "POST", "/admin/dining", EXPORT)
     assert {d["name"]: d for d in _call(site_data, "GET", "/site/travel")[1]["dining"]}["Harbor Grill"]["rating"] == 5
+
+
+MORE_REVIEWS_TEXT = """Local DFW Restaurants & Cafés
+
+Copper Kettle — 5★
+Hand-pulled noodles, a short drive from home.
+
+Gulf Shack — 5★
+Right on the beach, which makes it part of the vacation.
+
+Out-of-State Dining & Travel
+
+Ridgeline Roasters — 5★
+A specialty coffee stop I look for whenever I visit.
+
+Sugar Loaf — 4★
+Still good, if a little busier these days.
+"""
+
+
+def test_reviews_are_added_to_the_saved_ones(table):
+    _call(admin_api, "POST", "/admin/dining", EXPORT)
+    _call(admin_api, "POST", "/admin/dining/reviews", {"text": REVIEWS_TEXT})
+    status, saved = _call(admin_api, "POST", "/admin/dining/reviews", {"text": MORE_REVIEWS_TEXT})
+    assert status == 200
+
+    report = {r["name"]: r for r in saved["reviews"]}
+    assert len(report) == 9  # 6 + 4, Sugar Loaf reviewed again
+    public = {d["name"]: d for d in _call(site_data, "GET", "/site/travel")[1]["dining"]}
+    assert public["Sugar Loaf"]["rating"] == 4  # the newer review wins
+    assert public["Harbor Grill"]["rating"] == 5  # the earlier list is kept
+    assert public["Ridgeline Roasters"]["category"] == "cafe"
+    assert public["Gulf Shack"]["review"].endswith("vacation.")  # away, though under "Local DFW"
+    assert report["Copper Kettle"]["hiddenBecause"] == ["home area (listed as local)"]
+
+    # "replace" swaps the set.
+    _call(admin_api, "POST", "/admin/dining/reviews", {"text": MORE_REVIEWS_TEXT, "replace": True})
+    public = {d["name"]: d for d in _call(site_data, "GET", "/site/travel")[1]["dining"]}
+    assert public["Harbor Grill"]["rating"] is None
+
+
+def test_a_review_names_dfw_or_shares_only_a_first_word_with_another_review():
+    reviews, _ = parse_reviews({"text": """Coffee
+
+Quiet Grounds — 5★
+One of my favourite coffee spots in the DFW area.
+
+Sit-Down Restaurants
+
+Simply South — 5★
+Dosas and filter coffee.
+
+Simply Thai Bistro — 5★
+Generous curries.
+"""})
+    report = {r["name"]: r for r in curate([], reviews)["reviews"]}
+    assert report["Quiet Grounds"]["hiddenBecause"] == ["home area (named in the review)"]
+    assert report["Simply South"]["public"] and report["Simply Thai Bistro"]["public"]
+    assert report["Simply Thai Bistro"]["matched"] == []
 
 
 # -- notes --------------------------------------------------------------------

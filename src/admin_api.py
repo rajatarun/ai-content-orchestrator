@@ -327,6 +327,8 @@ def lambda_handler(event, context):
         reviews, error = dining.parse_reviews(body)
         if error:
             return _resp(event, 400, {"error": error})
+        if body.get("replace") is not True:
+            reviews = dining.merge_reviews(get_dining_reviews(), reviews)
         put_dining_reviews(reviews, updated_by=caller_identity(event))
         stored = get_dining()
         view = dining.admin_view(stored["entries"], stored["updatedAt"], reviews, get_dining_notes())
