@@ -222,7 +222,8 @@ def curate(
             ]
             if not targets:
                 targets = [{
-                    "name": part, "category": review["category"], "city": None, "region": None,
+                    "name": part, "category": review["category"],
+                    "city": review.get("city"), "region": review.get("region"),
                     "visits": 0, "_names": [part], "_fromReview": True,
                 }]
                 merged.append(targets[0])
@@ -230,6 +231,8 @@ def curate(
                 target["rating"], target["review"] = review["rating"], review["review"]
                 if review.get("homeArea"):
                     target["_homeArea"] = True
+                if review.get("city") and not target["city"]:
+                    target["city"], target["region"] = review["city"], review.get("region")
                 target.setdefault("_cardName", target["name"])
                 target["name"] = part  # his spelling over the card's ("Armor Coffee", not "Armor Company")
                 landed.append(target)
@@ -348,6 +351,7 @@ GENERIC_FIRST_WORDS = {"the", "cafe", "coffee", "le", "la", "les", "el", "pizza"
 # Parts of a review title that qualify it rather than name a place ("Domino's / Pizza Places").
 NOT_A_NAME = re.compile(r"^(pizza|coffee|burger|taco)?\s*(places|shops|spots|chains?)$", re.I)
 MAX_REVIEW = 2000
+WHERE_IN_NAME = re.compile(r"^(?P<name>.+?)\s*\((?P<where>[^()]+)\)\s*$")
 AWAY = re.compile(r"\b(vacation|on a trip|while traveling|when I'?m traveling)\b", re.I)
 
 
@@ -390,16 +394,26 @@ def _review(raw: Dict[str, Any], where: str) -> Dict[str, Any]:
     if len(text) > MAX_REVIEW:
         raise DiningError(f"{where}.review: longer than {MAX_REVIEW} characters")
     section = _text(raw.get("section"), f"{where}.section", 80)
+    # "Le Paris Halles (Paris) — 4★": a place can say where it is, since its
+    # name may not ("Paris Baguette" is a chain, Le Paris Halles is in Paris).
+    city, region = _text(raw.get("city"), f"{where}.city"), _text(raw.get("region"), f"{where}.region")
+    where_at = WHERE_IN_NAME.match(name)
+    if where_at:
+        name = where_at["name"].strip()
+        city, _, region = (part.strip() for part in where_at["where"].partition(","))
+        city, region = city or None, region or None
     names = [part.strip() for part in name.split("/") if part.strip() and not NOT_A_NAME.match(part.strip())]
     if not names:
         raise DiningError(f"{where}.name: no place name in it")
     return {
         "name": name, "names": names, "rating": rating, "review": text,
         "section": section, "category": _review_category(section, name, text),
-        # A review has no city, so a section headed as local speaks for it,
-        # unless the review itself is about being away ("the vacation").
+        "city": city, "region": region,
+        # A review with no city: a section headed as local speaks for it,
+        # unless the review itself is about being away ("the vacation"). One
+        # with a city is judged by the city, like a note.
         "homeArea": raw.get("homeArea") is True
-        or (_local_section(section or "") and not AWAY.search(text)),
+        or (not city and _local_section(section or "") and not AWAY.search(text)),
     }
 
 

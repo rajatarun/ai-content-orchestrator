@@ -517,7 +517,8 @@ paths:
       summary: Add café and restaurant reviews
       description: |
         Either the reviews as written, `{"text": "..."}`: optional section
-        headings, then `Name — 4★` and a paragraph for each; or
+        headings, then `Name — 4★` (or `Name (City) — 4★`, `Name (City, ST) — 4★`
+        to say where it is) and a paragraph for each; or
         `{"reviews": [{"name", "rating", "review", "section"}]}`. They are
         added to the reviews already saved, and a place reviewed again takes
         the new review; `"replace": true` swaps the whole set instead. A

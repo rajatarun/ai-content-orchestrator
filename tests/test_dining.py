@@ -317,6 +317,29 @@ Generous curries.
     assert report["Simply Thai Bistro"]["matched"] == []
 
 
+def test_a_review_can_say_where_the_place_is():
+    reviews, error = parse_reviews({"text": """Coffee
+
+Rue Halles (Lyon) — 4★
+Strong espresso.
+
+Harbor Grill (Boston, MA) — 5★
+Fresh fish.
+
+Corner Cup (Plano, TX) — 5★
+My usual.
+"""})
+    assert error is None
+    assert [(r["name"], r["city"], r["region"]) for r in reviews] == [
+        ("Rue Halles", "Lyon", None), ("Harbor Grill", "Boston", "MA"), ("Corner Cup", "Plano", "TX"),
+    ]
+    curated = curate([], reviews)
+    kept = {e["name"]: e for e in curated["kept"]}
+    assert kept["Rue Halles"]["city"] == "Lyon"
+    report = {r["name"]: r for r in curated["reviews"]}
+    assert report["Corner Cup"]["hiddenBecause"] == ["home area"]
+
+
 # -- notes --------------------------------------------------------------------
 
 NOTES_TEXT = """Local Spots Near Home (DFW)
