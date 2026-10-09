@@ -244,7 +244,8 @@ one place; `GET /admin/dining` says what went and why. The public copy (in
 `/site/travel`) never has `visits`: frequency says where someone lives and works.
 Reviews (`POST /admin/dining/reviews`, stored apart so a new card export keeps
 them) attach to the place they name, or add one, and add `rating` and `review`
-to it; they never lift a place past the filters, and a review naming a
+to it; `Name (City) — 4★` gives the place a city when it has none (its name
+may not say: "Paris Baguette" is a chain, "Le Paris Halles (Paris)" is in Paris); they never lift a place past the filters, and a review naming a
 home-area town or DFW, or under a "Local DFW" heading (unless it is about a
 vacation), counts as home area. Each post adds to the saved reviews, a place
 reviewed again taking the new text, so they can arrive a list at a time;
