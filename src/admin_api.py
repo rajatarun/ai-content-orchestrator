@@ -294,6 +294,22 @@ def lambda_handler(event, context):
         total = len(list_travel_trips())
         return _resp(event, 200, {"saved": saved, "total": total, "rebuild": _rebuild_site()})
 
+    if path.startswith("/admin/travel/") and method == "PUT":
+        trip_id = unquote(path[len("/admin/travel/"):])
+        if not travel_journal.TRIP_ID.match(trip_id):
+            return _resp(event, 400, {"error": "invalid trip id"})
+        try:
+            body = _json(event)
+        except ValueError:
+            return _resp(event, 400, {"error": "body must be JSON"})
+        if not isinstance(body, dict):
+            return _resp(event, 400, {"error": "(root): must be one trip"})
+        trips, error = travel_journal.parse_upload({**body, "id": trip_id})
+        if error:
+            return _resp(event, 400, {"error": error})
+        put_travel_trips(trips, updated_by=caller_identity(event))
+        return _resp(event, 200, {"trip": trips[0], "rebuild": _rebuild_site()})
+
     if path.startswith("/admin/travel/") and method == "DELETE":
         trip_id = unquote(path[len("/admin/travel/"):])
         if not travel_journal.TRIP_ID.match(trip_id):

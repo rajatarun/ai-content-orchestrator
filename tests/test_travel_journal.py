@@ -30,7 +30,7 @@ os.environ.setdefault("ARTICLES_BUCKET", "test-bucket")
 import admin_api  # noqa: E402
 import db  # noqa: E402
 import site_data  # noqa: E402
-from travel_journal import parse_upload, public_key  # noqa: E402
+from travel_journal import parse_upload, public_key, public_trip  # noqa: E402
 
 
 class FakeBatch:
@@ -191,7 +191,7 @@ def test_the_public_journal_has_no_dates_in_any_form(table):
     assert trip["posts"] == [
         {"url": "https://www.instagram.com/p/Example123/", "description": "Fishing boats rest in a quiet harbor.", "isCover": True}
     ]
-    assert set(trip["places"][0]) == {"city", "region", "countryCode", "lat", "lng"}
+    assert set(trip["places"][0]) == {"city", "region", "countryCode", "lat", "lng", "visited", "food", "stays"}
 
     text = json.dumps(public)
     assert not re.search(r"\b(19|20)\d{2}\b", text), text
@@ -225,3 +225,70 @@ def test_the_public_journal_is_not_in_date_order(table):
 
 def test_nothing_uploaded_reads_as_an_empty_journal(table):
     assert _call(site_data, "GET", "/site/travel") == (200, {"trips": [], "dining": []})
+
+
+# -- a trip as the whole story: what I saw, ate and where I stayed ------------
+
+STORY_TRIP = {
+    "id": "2016-05-lake-weekend",
+    "title": "Lake Weekend",
+    "startDate": "2016-05-20",
+    "endDate": "2016-05-22",
+    "places": [
+        {
+            "city": "Lakeview", "region": "Oregon", "countryCode": "US", "lat": 42.19, "lng": -120.35,
+            "visited": [{"name": "Old Mill Trail", "note": "Wildflowers along the creek in 2016."}],
+            "food": [
+                {"name": "Dockside Grill", "category": "restaurant", "rating": 5, "review": "Trout, done simply."},
+                {"name": "Starbucks", "category": "cafe", "rating": 4},
+            ],
+            "stays": [{"name": "Pine Cabin", "type": "airbnb", "rating": 0, "review": "Quiet.",
+                       "checkIn": "2016-05-20", "nights": 2}],
+        },
+        {
+            "city": "Plano", "region": "Texas", "countryCode": "US", "lat": 33.02, "lng": -96.70,
+            "food": [{"name": "Corner Cafe", "category": "cafe"}],
+            "stays": [{"name": "Home Room", "type": "airbnb"}],
+        },
+    ],
+}
+
+
+def test_one_trip_carries_what_i_saw_ate_and_where_i_stayed():
+    trips, error = parse_upload(STORY_TRIP)  # one trip on its own
+    assert error is None and len(trips) == 1
+    lake = trips[0]["places"][0]
+    assert lake["visited"][0]["name"] == "Old Mill Trail"
+    assert lake["stays"][0] == {"name": "Pine Cabin", "type": "airbnb", "rating": None, "review": "Quiet.",
+                                "checkIn": "2016-05-20", "nights": 2}
+
+    public = public_trip(trips[0])
+    lake, home = public["places"]
+    assert [f["name"] for f in lake["food"]] == ["Dockside Grill"]  # fast food left out
+    assert lake["stays"] == [{"name": "Pine Cabin", "type": "airbnb", "rating": None, "review": "Quiet."}]
+    assert "2016" not in json.dumps(public)
+    assert home["food"] == [] and home["stays"] == []  # home area
+
+
+@pytest.mark.parametrize("change, where", [
+    ({"food": [{"category": "cafe"}]}, "(trip).places.0.food.0.name"),
+    ({"food": [{"name": "X", "category": "bar"}]}, "(trip).places.0.food.0.category"),
+    ({"stays": [{"name": "X", "nights": 0}]}, "(trip).places.0.stays.0.nights"),
+    ({"stays": [{"name": "X", "checkIn": "May 20"}]}, "(trip).places.0.stays.0.checkIn"),
+    ({"visited": [{"note": "no name"}]}, "(trip).places.0.visited.0.name"),
+])
+def test_a_bad_story_field_names_where_it_is(change, where):
+    trip = {**STORY_TRIP, "places": [{**STORY_TRIP["places"][0], **change}]}
+    trips, error = parse_upload(trip)
+    assert trips is None and where in error
+
+
+def test_the_editor_saves_one_trip_by_its_id(table):
+    status, saved = _call(admin_api, "PUT", "/admin/travel/2016-05-lake-weekend", {**STORY_TRIP, "title": "Lake Days"})
+    assert status == 200 and saved["trip"]["title"] == "Lake Days"
+    # The path names the trip, whatever the body says.
+    status, saved = _call(admin_api, "PUT", "/admin/travel/2016-05-lake-weekend", {**STORY_TRIP, "id": "other"})
+    assert status == 200 and saved["trip"]["id"] == "2016-05-lake-weekend"
+    trips = _call(admin_api, "GET", "/admin/travel")[1]["trips"]
+    assert [t["id"] for t in trips] == ["2016-05-lake-weekend"]
+    assert _call(admin_api, "PUT", "/admin/travel/bad id!", STORY_TRIP)[0] == 400

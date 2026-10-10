@@ -16,6 +16,14 @@ Two views, and the difference between them is the point:
   ``2015-06-coast-weekend``), not years written into the text, and not in date order.
   The website builds /traveller from this route alone.
 
+A trip is also the whole story of that trip: each of its places can carry
+``visited`` (``{name, note}``), ``food`` (``{name, category, rating, review,
+note, score}``) and ``stays`` (``{name, type, rating, review, checkIn,
+nights}``). ``POST /admin/travel`` also takes one trip on its own, and
+``PUT /admin/travel/{tripId}`` replaces one (the settings page's editor). The
+public view keeps all three without dates or nights, and leaves out fast food
+and food or stays in the home area, by the same rules as dining.py.
+
 Validation names the field that is wrong (``years.0.trips.3.startDate``) so a
 bad paste is fixable from the error. Ask Photos answers null when unsure, so
 almost everything may be null; what may not be is a trip without an id.
@@ -80,6 +88,69 @@ def _date(value: Any, where: str) -> Optional[str]:
     return value
 
 
+FOOD_CATEGORIES = ("cafe", "restaurant", "other dining")
+STAY_TYPES = ("airbnb", "hotel", "other")
+
+
+def _rating(value: Any, where: str) -> Optional[int]:
+    if value in (None, 0):
+        return None  # Airbnb writes 0 for "no overall rating"
+    if isinstance(value, bool) or not isinstance(value, int) or not 1 <= value <= 5:
+        raise JournalError(f"{where}: a whole number from 1 to 5, or null")
+    return value
+
+
+def _choice(value: Any, where: str, options: Tuple[str, ...], default: str) -> str:
+    if value is None:
+        return default
+    if not isinstance(value, str) or value.strip().lower() not in options:
+        raise JournalError(f"{where}: one of {', '.join(options)}")
+    return value.strip().lower()
+
+
+def _named(raw: Any, where: str) -> Tuple[Dict[str, Any], str]:
+    if not isinstance(raw, dict):
+        raise JournalError(f"{where}: must be an object")
+    name = _text(raw.get("name"), f"{where}.name", 120)
+    return raw, name
+
+
+def _visited(raw: Any, where: str) -> Dict[str, Any]:
+    raw, name = _named(raw, where)
+    if not name:
+        raise JournalError(f"{where}.name: required")
+    return {"name": name, "note": _text(raw.get("note"), f"{where}.note", 500)}
+
+
+def _food(raw: Any, where: str) -> Dict[str, Any]:
+    raw, name = _named(raw, where)
+    if not name:
+        raise JournalError(f"{where}.name: required")
+    return {
+        "name": name,
+        "category": _choice(raw.get("category"), f"{where}.category", FOOD_CATEGORIES, "restaurant"),
+        "rating": _rating(raw.get("rating"), f"{where}.rating"),
+        "review": _text(raw.get("review"), f"{where}.review"),
+        "note": _text(raw.get("note"), f"{where}.note", 500),
+        "score": _number(raw.get("score"), f"{where}.score", 1, 5),
+    }
+
+
+def _stay(raw: Any, where: str) -> Dict[str, Any]:
+    raw, name = _named(raw, where)
+    nights = raw.get("nights")
+    if nights is not None and (isinstance(nights, bool) or not isinstance(nights, int) or not 1 <= nights <= 365):
+        raise JournalError(f"{where}.nights: a whole number from 1 to 365, or null")
+    return {
+        "name": name,
+        "type": _choice(raw.get("type"), f"{where}.type", STAY_TYPES, "other"),
+        "rating": _rating(raw.get("rating"), f"{where}.rating"),
+        "review": _text(raw.get("review"), f"{where}.review"),
+        "checkIn": _date(raw.get("checkIn"), f"{where}.checkIn"),
+        "nights": nights,
+    }
+
+
 def _place(raw: Any, where: str) -> Dict[str, Any]:
     if not isinstance(raw, dict):
         raise JournalError(f"{where}: must be an object")
@@ -93,6 +164,9 @@ def _place(raw: Any, where: str) -> Dict[str, Any]:
         "countryCode": code.upper() if code else None,
         "lat": _number(raw.get("lat"), f"{where}.lat", -90, 90),
         "lng": _number(raw.get("lng"), f"{where}.lng", -180, 180),
+        "visited": [_visited(v, f"{where}.visited.{i}") for i, v in enumerate(_list(raw.get("visited"), f"{where}.visited"))],
+        "food": [_food(f, f"{where}.food.{i}") for i, f in enumerate(_list(raw.get("food"), f"{where}.food"))],
+        "stays": [_stay(st, f"{where}.stays.{i}") for i, st in enumerate(_list(raw.get("stays"), f"{where}.stays"))],
     }
 
 
@@ -156,8 +230,10 @@ def parse_upload(body: Any) -> Tuple[Optional[List[Dict[str, Any]]], Optional[st
                 located += [(t, f"years.{y}.trips.{i}") for i, t in enumerate(_list(year.get("trips"), f"years.{y}.trips"))]
         elif "trips" in body:
             located = [(t, f"trips.{i}") for i, t in enumerate(_list(body["trips"], "trips"))]
+        elif "id" in body:
+            located = [(body, "(trip)")]  # one trip on its own: the settings page's upload and editor
         else:
-            raise JournalError('(root): expected {"years": [...]}, {"year": ..., "trips": [...]} or {"trips": [...]}')
+            raise JournalError('(root): expected one trip {"id": ...}, {"trips": [...]} or {"years": [...]}')
         if not located:
             raise JournalError("(root): no trips in the upload")
         if len(located) > MAX_TRIPS_PER_UPLOAD:
@@ -196,6 +272,33 @@ def public_key(trip_id: str) -> str:
     return hashlib.sha256(f"travel:{trip_id}".encode("utf-8")).hexdigest()[:12]
 
 
+def _public_place(place: Dict[str, Any]) -> Dict[str, Any]:
+    """A place of a trip as anyone may see it: no stay dates or nights, no fast
+    food, and no food or stays in the home area (dining.py's lists)."""
+    from dining import FAST_FOOD_CHAINS, HOME_AREA_TOWNS, compact
+
+    home = (place.get("city") or "").strip().lower() in HOME_AREA_TOWNS
+    return {
+        **{k: place.get(k) for k in ("city", "region", "countryCode", "lat", "lng")},
+        "visited": [
+            {"name": _undated(v["name"]), "note": _undated(v.get("note"))} for v in place.get("visited") or []
+        ],
+        "food": [] if home else [
+            {
+                "name": f["name"], "category": f.get("category"), "rating": f.get("rating"),
+                "review": _undated(f.get("review")), "note": _undated(f.get("note")), "score": f.get("score"),
+            }
+            for f in place.get("food") or []
+            if compact(f["name"]) not in FAST_FOOD_CHAINS
+        ],
+        "stays": [] if home else [
+            {"name": _undated(st.get("name")), "type": st.get("type"), "rating": st.get("rating"),
+             "review": _undated(st.get("review"))}
+            for st in place.get("stays") or []
+        ],
+    }
+
+
 def public_trip(trip: Dict[str, Any]) -> Dict[str, Any]:
     """One trip as anyone may see it. No dates in any form."""
     posts = [
@@ -210,10 +313,7 @@ def public_trip(trip: Dict[str, Any]) -> Dict[str, Any]:
         "tripType": trip.get("tripType"),
         "summary": _undated(trip.get("summary")),
         "highlights": [h for h in (_undated(h) for h in trip.get("highlights") or []) if h],
-        "places": [
-            {k: place.get(k) for k in ("city", "region", "countryCode", "lat", "lng")}
-            for place in trip.get("places") or []
-        ],
+        "places": [_public_place(place) for place in trip.get("places") or []],
         "posts": posts,
     }
 
