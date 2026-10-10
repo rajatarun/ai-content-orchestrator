@@ -449,6 +449,38 @@ paths:
         "400": { $ref: "#/components/responses/BadRequest" }
 
   /admin/travel/{tripId}:
+    put:
+      tags: [admin]
+      operationId: saveTravelTrip
+      summary: Replace one trip (the settings page's editor)
+      description: |
+        The whole trip as one object, including what each place carries:
+        `visited` ({name, note}), `food` ({name, category, rating, review,
+        note, score}) and `stays` ({name, type, rating, review, checkIn,
+        nights}). The path names the trip; an `id` in the body is ignored.
+        The public view keeps visited, food and stays without stay dates or
+        nights, and leaves out fast food and food or stays in the home area.
+      parameters:
+        - name: tripId
+          in: path
+          required: true
+          schema: { type: string, pattern: "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object }
+      responses:
+        "200":
+          description: Saved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  trip: { type: object }
+                  rebuild: { type: string }
+        "400": { $ref: "#/components/responses/BadRequest" }
     delete:
       tags: [admin]
       operationId: deleteTravelTrip
@@ -492,6 +524,9 @@ paths:
         cafeterias, generic names and unreadable card codes are left out, and
         two spellings of one place are merged; the response says which and why.
         The website gets the kept list without `visits`, inside `/site/travel`.
+        A place may also carry its own `rating`, `review`, `note` and `score`
+        (a list filled in by hand); a list that does is the whole truth, and
+        saving it clears the separately stored reviews and notes.
       requestBody:
         required: true
         content:

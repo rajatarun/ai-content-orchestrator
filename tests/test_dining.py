@@ -406,3 +406,22 @@ def test_a_note_gives_a_cityless_card_entry_its_city(table):
 def test_bad_notes_name_the_problem(body, where):
     notes, error = parse_notes(body)
     assert notes is None and where in error
+
+
+def test_a_list_with_its_own_words_replaces_the_stored_reviews_and_notes(table):
+    _call(admin_api, "POST", "/admin/dining", EXPORT)
+    _call(admin_api, "POST", "/admin/dining/reviews", {"text": REVIEWS_TEXT})  # reviews "Sugar Loaf"
+    filled = {"places": [
+        # Renamed since the review was written: with the old review kept, both would show.
+        {"name": "Sugar Loaf Bakery", "category": "other dining", "city": "Seattle", "region": "WA",
+         "rating": 5, "review": "A bright little bakery.", "note": "Cinnamon buns.", "score": 4.6},
+        {"name": "Corner Cup", "category": "cafe", "city": "Roanoke", "region": "TX", "rating": 4, "review": "Near home."},
+        {"name": "Harbor Grill", "category": "restaurant", "city": "Boston", "region": "MA"},
+    ]}
+    status, view = _call(admin_api, "POST", "/admin/dining", filled)
+    assert status == 200 and view["reviews"] == [] and view["notes"] == []
+    public = {d["name"]: d for d in _call(site_data, "GET", "/site/travel")[1]["dining"]}
+    assert set(public) == {"Sugar Loaf Bakery", "Harbor Grill"}  # Roanoke is home area
+    assert public["Sugar Loaf Bakery"]["rating"] == 5 and public["Sugar Loaf Bakery"]["score"] == 4.6
+    assert "visits" not in public["Harbor Grill"]
+    assert _call(admin_api, "POST", "/admin/dining", {"places": [{"name": "X", "rating": 9}]})[0] == 400

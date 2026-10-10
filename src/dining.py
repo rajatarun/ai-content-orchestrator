@@ -72,7 +72,7 @@ HOME_AREA_TOWNS = {
     "denton", "fairview", "farmersville", "flower mound", "fort worth", "frisco", "garland",
     "grand prairie", "grapevine", "irving", "lewisville", "little elm", "lucas", "mckinney",
     "melissa", "mesquite", "murphy", "plano", "princeton", "prosper", "richardson", "rockwall",
-    "sachse", "southlake", "the colony", "wylie",
+    "roanoke", "sachse", "southlake", "the colony", "wylie",
 }
 
 PUBLIC_FIELDS = ("name", "category", "city", "region", "rating", "review", "note", "score")
@@ -112,13 +112,38 @@ def _entry(raw: Any, where: str) -> Dict[str, Any]:
         raise DiningError(f"{where}.visits: must be a whole number")
     if name.isupper() and len(name) > 3:
         name = name.title()  # "SAFFRON HOUSE" -> "Saffron House"
-    return {
+    entry = {
         "name": name,
         "category": category,
         "city": _text(raw.get("city"), f"{where}.city"),
         "region": _text(raw.get("region"), f"{where}.region", 60),
         "visits": visits,
     }
+    # A list I filled in myself carries my words with each place (see INLINE_FIELDS).
+    rating = raw.get("rating")
+    if rating not in (None, 0):
+        if isinstance(rating, bool) or not isinstance(rating, int) or not 1 <= rating <= 5:
+            raise DiningError(f"{where}.rating: a whole number from 1 to 5, or null")
+        entry["rating"] = rating
+    score = raw.get("score")
+    if score is not None:
+        if isinstance(score, bool) or not isinstance(score, (int, float)) or not 1 <= score <= 5:
+            raise DiningError(f"{where}.score: a number from 1 to 5, or null")
+        entry["score"] = float(score)
+    for field, max_len in (("review", MAX_REVIEW), ("note", MAX_NOTE)):
+        text = _text(raw.get(field), f"{where}.{field}", max_len)
+        if text:
+            entry[field] = text
+    return entry
+
+
+# Fields a place may carry itself. A list with any of them is the whole truth:
+# saving it replaces the separately stored reviews and notes (admin_api).
+INLINE_FIELDS = ("rating", "review", "note", "score")
+
+
+def carries_its_own_words(entries: List[Dict[str, Any]]) -> bool:
+    return any(field in entry for entry in entries for field in INLINE_FIELDS)
 
 
 def parse_upload(body: Any) -> Tuple[Optional[List[Dict[str, Any]]], Optional[str]]:
@@ -278,12 +303,12 @@ def curate(
             reason = next((why for pattern, why in NOT_A_PLACE if pattern.search(lowered)), None)
         entry["_reason"] = reason
         clean = {k: entry[k] for k in ("name", "category", "city", "region", "visits")}
-        if entry.get("rating"):
-            clean["rating"], clean["review"] = entry["rating"], entry["review"]
+        if entry.get("rating") or entry.get("review"):
+            clean["rating"], clean["review"] = entry.get("rating"), entry.get("review")
         if entry.get("_fromReview"):
             clean["fromReview"] = True
-        if entry.get("note"):
-            clean["note"], clean["score"] = entry["note"], entry["score"]
+        if entry.get("note") or entry.get("score"):
+            clean["note"], clean["score"] = entry.get("note"), entry.get("score")
         if entry.get("_fromNote"):
             clean["fromNote"] = True
         if len(entry["_names"]) > 1:

@@ -161,7 +161,7 @@ bearer JWT:
 | DELETE | `/admin/subscribers/{email}` | Remove (idempotent) |
 | GET/PATCH | `/admin/settings` | Read / change site settings (e.g. `homeVariant`, the website's homepage design) |
 | GET/POST | `/admin/travel` | The full travel journal, dates included / add or replace trips (Ask Photos JSON as-is) |
-| DELETE | `/admin/travel/{tripId}` | Remove one trip (idempotent) |
+| PUT/DELETE | `/admin/travel/{tripId}` | Replace one trip (the settings page's editor) / remove it (idempotent) |
 | GET/POST | `/admin/dining` | The café/restaurant list with what was left out and why / replace it (card export as-is) |
 | POST | `/admin/dining/reviews` | Add reviews (the text as written: `Name — 4★` + a paragraph); a place reviewed again takes the new one; `"replace": true` swaps the set |
 | POST | `/admin/dining/notes` | Replace the notes (`* Name (address) – 4.5/5. What it is.`; city/state kept, street dropped) |
@@ -226,8 +226,12 @@ error. Where the topic comes from is the other half — see below.
 **Add a new Lambda function:** Define it in `template.yaml` under `Resources`, then create the handler in `src/`.
 
 **Travel journal (the website's `/traveller`):** the admin UI uploads Ask Photos
-JSON to `POST /admin/travel`; trips are upserted by id, so it can arrive in
-pieces. `GET /site/travel` is the public view and must never carry a date:
+JSON to `POST /admin/travel` (or one trip on its own); trips are upserted by id,
+so it can arrive in pieces, and the settings page's editor saves one trip with
+`PUT /admin/travel/{tripId}`. A trip is the whole story of that trip: each of
+its places can carry `visited`, `food` and `stays`; the public view keeps them
+without stay dates or nights and leaves out fast food and the home area, by
+`dining.py`'s lists. `GET /site/travel` is the public view and must never carry a date:
 no date fields, photo timestamps, trip ids (Ask Photos writes them as dates),
 years or month names in the text, or date order. `tests/test_travel_journal.py` holds it to
 that; a new trip field is admin-only until `public_trip` is changed on purpose.
@@ -236,7 +240,11 @@ next build; set the `SITE_REBUILD_HOOK_URL` repo secret (passed as
 `SiteRebuildHookUrl`, an Amplify incoming webhook) and every save triggers one.
 
 **Cafés and restaurants (also `/traveller`):** `POST /admin/dining` takes the
-card-transaction export and replaces the list. `src/dining.py` leaves out fast
+card-transaction export and replaces the list. It is the "Wherever I am" list:
+places not tied to a trip (food on a trip lives in the trip, see above). A
+place may carry its own `rating`/`review`/`note`/`score`; a list that does is
+the whole truth, and saving it clears the stored reviews and notes, which
+would otherwise duplicate any place the list has renamed. `src/dining.py` leaves out fast
 food (labelled, or a chain in `FAST_FOOD_CHAINS`, Starbucks and Dunkin' included),
 anywhere in the home area (`HOME_AREA_TOWNS`), delivery apps, card offers,
 workplace cafeterias, generic names and card codes, and merges two spellings of
