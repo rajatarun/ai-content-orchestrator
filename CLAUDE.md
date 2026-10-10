@@ -240,7 +240,11 @@ next build; set the `SITE_REBUILD_HOOK_URL` repo secret (passed as
 `SiteRebuildHookUrl`, an Amplify incoming webhook) and every save triggers one.
 
 **Cafés and restaurants (also `/traveller`):** `POST /admin/dining` takes the
-card-transaction export and replaces the list. `src/dining.py` leaves out fast
+card-transaction export and replaces the list. It is the "Wherever I am" list:
+places not tied to a trip (food on a trip lives in the trip, see above). A
+place may carry its own `rating`/`review`/`note`/`score`; a list that does is
+the whole truth, and saving it clears the stored reviews and notes, which
+would otherwise duplicate any place the list has renamed. `src/dining.py` leaves out fast
 food (labelled, or a chain in `FAST_FOOD_CHAINS`, Starbucks and Dunkin' included),
 anywhere in the home area (`HOME_AREA_TOWNS`), delivery apps, card offers,
 workplace cafeterias, generic names and card codes, and merges two spellings of

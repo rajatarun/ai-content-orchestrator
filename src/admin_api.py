@@ -332,6 +332,11 @@ def lambda_handler(event, context):
         if error:
             return _resp(event, 400, {"error": error})
         updated_at = put_dining(entries, updated_by=caller_identity(event))
+        if dining.carries_its_own_words(entries):
+            # The list carries the reviews and notes itself: the separately
+            # stored ones would only duplicate places it has renamed.
+            put_dining_reviews([], updated_by=caller_identity(event))
+            put_dining_notes([], updated_by=caller_identity(event))
         view = dining.admin_view(entries, updated_at, get_dining_reviews(), get_dining_notes())
         return _resp(event, 200, {**view, "rebuild": _rebuild_site()})
 
