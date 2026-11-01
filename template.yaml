@@ -53,6 +53,18 @@ Parameters:
       Optional Amplify incoming-webhook URL for the resume website. Saving the
       travel journal POSTs to it so /traveller rebuilds with the change; empty
       means the change shows on the site's next deploy.
+  ContextWeaveFinanceBucket:
+    Type: String
+    Default: contextweave-finance-239571291755-prod
+    Description: >-
+      ContextWeave finance docs bucket (not the -mm multimodal bucket). Admin
+      POST /admin/knowledge/finance/upload writes here to trigger ingest.
+  ContextWeaveHealthBucket:
+    Type: String
+    Default: contextweave-health-239571291755-prod
+    Description: >-
+      ContextWeave health docs bucket (not the -mm multimodal bucket). Admin
+      POST /admin/knowledge/health/upload writes here to trigger ingest.
 
 Globals:
   Function:
@@ -380,6 +392,8 @@ Resources:
           STATUS_FUNCTION_ARN: !Ref StatusFunctionArn
           HTTP_API_URL: !Ref HttpApiUrl
           SITE_REBUILD_HOOK_URL: !Ref SiteRebuildHookUrl
+          CONTEXTWEAVE_FINANCE_BUCKET: !Ref ContextWeaveFinanceBucket
+          CONTEXTWEAVE_HEALTH_BUCKET: !Ref ContextWeaveHealthBucket
       Policies:
         - AWSLambdaBasicExecutionRole
         - DynamoDBCrudPolicy:
@@ -396,6 +410,8 @@ Resources:
               - s3:PutObject
             Resource:
               - !Sub "arn:aws:s3:::${ArticlesBucket}/${ArticlesPrefix}/*"
+              - !Sub "arn:aws:s3:::${ContextWeaveFinanceBucket}/*"
+              - !Sub "arn:aws:s3:::${ContextWeaveHealthBucket}/*"
       Events:
         AdminRoot:
           Type: Api
@@ -624,3 +640,11 @@ Outputs:
       `servers` block is templated on ApiBaseUrl above, so a harness resolves
       the stack first and the spec second, rather than hardcoding a URL.
     Value: openapi/content-orchestrator.yaml
+
+  ContextWeaveFinanceBucketName:
+    Description: S3 bucket for ContextWeave finance ingest uploads (admin API)
+    Value: !Ref ContextWeaveFinanceBucket
+
+  ContextWeaveHealthBucketName:
+    Description: S3 bucket for ContextWeave health ingest uploads (admin API)
+    Value: !Ref ContextWeaveHealthBucket
