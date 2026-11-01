@@ -17,6 +17,7 @@ from db import (
 from site_settings import admin_view, caller_identity, validate_patch
 import travel_journal
 import dining
+import knowledge_upload
 from statuses import (
     ALL_ARTICLE_STATUSES,
     APPROVED,
@@ -30,6 +31,7 @@ from statuses import (
 
 log = get_logger("admin_api")
 lambda_client = boto3.client("lambda")
+s3 = boto3.client("s3")
 
 _ACTION_ALIASES = {
     "request-edits": "request-edits",
@@ -111,6 +113,37 @@ def _qs(event):
         return out
     # HTTP API (v2)
     return parse_qs(event.get("rawQueryString") or "")
+
+def _handle_knowledge_upload(event, domain: str):
+    try:
+        body = _json(event)
+    except (ValueError, json.JSONDecodeError):
+        return _resp(event, 400, {"error": "body must be JSON"})
+    data, content_type, filename, error = knowledge_upload.parse_upload(body)
+    if error:
+        return _resp(event, 400, {"error": error})
+    bucket, bucket_error = knowledge_upload.bucket_for_domain(domain)
+    if bucket_error:
+        code = 500 if "not configured" in bucket_error else 400
+        return _resp(event, code, {"error": bucket_error})
+    key = knowledge_upload.build_object_key(filename)
+    try:
+        resp = s3.put_object(
+            Bucket=bucket,
+            Key=key,
+            Body=data,
+            ContentType=content_type,
+        )
+    except Exception as e:  # noqa: BLE001
+        log.exception("knowledge_upload_failed", extra={"domain": domain, "bucket": bucket, "key": key})
+        return _resp(event, 500, {"error": "S3 upload failed", "details": str(e)})
+    etag = resp.get("ETag", "").strip('"')
+    log.info(
+        "knowledge_uploaded",
+        extra={"domain": domain, "bucket": bucket, "key": key, "bytes": len(data), "contentType": content_type},
+    )
+    return _resp(event, 201, {"bucket": bucket, "key": key, "etag": etag})
+
 
 def _rebuild_site() -> str:
     """Ask the website to rebuild, so a journal change reaches /traveller.
@@ -367,6 +400,12 @@ def lambda_handler(event, context):
         stored = get_dining()
         view = dining.admin_view(stored["entries"], stored["updatedAt"], get_dining_reviews(), notes)
         return _resp(event, 200, {**view, "rebuild": _rebuild_site()})
+
+    # ContextWeave knowledge ingest (finance / health S3 buckets)
+    if path == "/admin/knowledge/finance/upload" and method == "POST":
+        return _handle_knowledge_upload(event, "finance")
+    if path == "/admin/knowledge/health/upload" and method == "POST":
+        return _handle_knowledge_upload(event, "health")
 
     # Subscribers
     if path == "/admin/subscribers" and method == "GET":

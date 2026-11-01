@@ -614,6 +614,67 @@ paths:
                       rebuild: { type: string }
         "400": { $ref: "#/components/responses/BadRequest" }
 
+  /admin/knowledge/finance/upload:
+    post:
+      tags: [admin]
+      operationId: uploadContextWeaveFinanceDocument
+      summary: Upload a document or photo into the ContextWeave finance bucket
+      description: |
+        Writes one object under `uploads/<year>/<month>/<uuid>-<filename>` in the
+        stack's `ContextWeaveFinanceBucket` (plain docs bucket, not `-mm`).
+        S3 events trigger ContextWeave ingest. Body is JSON with base64 content
+        so the resume admin client does not need multipart uploads.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/KnowledgeUploadRequest" }
+      responses:
+        "201":
+          description: Stored in S3
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/KnowledgeUploadResult" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "500":
+          description: S3 or configuration failure
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error: { type: string }
+                  details: { type: string }
+
+  /admin/knowledge/health/upload:
+    post:
+      tags: [admin]
+      operationId: uploadContextWeaveHealthDocument
+      summary: Upload a document or photo into the ContextWeave health bucket
+      description: |
+        Same contract as finance upload, targeting `ContextWeaveHealthBucket`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/KnowledgeUploadRequest" }
+      responses:
+        "201":
+          description: Stored in S3
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/KnowledgeUploadResult" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "500":
+          description: S3 or configuration failure
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error: { type: string }
+                  details: { type: string }
+
   /admin/settings:
     get:
       tags: [admin]
@@ -931,6 +992,32 @@ components:
           schema: { $ref: "#/components/schemas/PublicError" }
 
   schemas:
+    KnowledgeUploadRequest:
+      type: object
+      required: [filename, contentType, contentBase64]
+      properties:
+        filename:
+          type: string
+          description: Basename only (no path segments); stored as part of the S3 key
+          example: statement-2025-10.pdf
+        contentType:
+          type: string
+          description: |
+            MIME type sent as S3 ContentType. Allowed: application/pdf, text/plain,
+            text/markdown, image/jpeg, image/png, image/gif, image/webp, image/bmp
+            (image/jpg is accepted and normalised to image/jpeg).
+          example: application/pdf
+        contentBase64:
+          type: string
+          format: byte
+          description: Standard base64 encoding of the file bytes (max 8 MiB decoded)
+    KnowledgeUploadResult:
+      type: object
+      required: [bucket, key, etag]
+      properties:
+        bucket: { type: string }
+        key: { type: string }
+        etag: { type: string }
     DiningPlace:
       type: object
       required: [name, category]
