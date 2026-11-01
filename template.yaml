@@ -65,6 +65,12 @@ Parameters:
     Description: >-
       ContextWeave health docs bucket (not the -mm multimodal bucket). Admin
       POST /admin/knowledge/health/upload writes here to trigger ingest.
+  ContextWeaveDocsEncryptionKeyArn:
+    Type: String
+    Default: arn:aws:kms:us-east-1:239571291755:key/49eac3db-1f3a-4c91-98ac-61ae722dcaff
+    Description: >-
+      CMK for default SSE-KMS on the ContextWeave finance/health docs buckets
+      (ExpertiseRAG). Admin knowledge upload needs kms:GenerateDataKey on PutObject.
 
 Globals:
   Function:
@@ -412,6 +418,15 @@ Resources:
               - !Sub "arn:aws:s3:::${ArticlesBucket}/${ArticlesPrefix}/*"
               - !Sub "arn:aws:s3:::${ContextWeaveFinanceBucket}/*"
               - !Sub "arn:aws:s3:::${ContextWeaveHealthBucket}/*"
+        - Statement:
+            Effect: Allow
+            Action:
+              - kms:Encrypt
+              - kms:Decrypt
+              - kms:GenerateDataKey
+              - kms:GenerateDataKeyWithoutPlaintext
+              - kms:DescribeKey
+            Resource: !Ref ContextWeaveDocsEncryptionKeyArn
       Events:
         AdminRoot:
           Type: Api
